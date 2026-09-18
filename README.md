@@ -2,11 +2,11 @@
 
 > Adaptive middleware designed to reduce redundant API traffic, latency, and backend load.
 
-`🚧 Status: Phase 2 Complete — Mock External API`
+`🚧 Status: Phase 3 Complete — Basic API Proxy`
 
 ## Project Overview
 
-Modern applications frequently make repeated requests to APIs. Many of these requests may ask for identical or nearly identical data, causing unnecessary network traffic, increased latency, and additional load on backend services.
+Modern applications frequently make repeated requests to APIs. Many of these requests ask for identical or nearly identical data, causing unnecessary network traffic, increased latency, and additional load on backend services.
 
 The Intelligent API Traffic Optimizer is being developed as a middleware layer positioned between clients and external APIs.
 
@@ -24,13 +24,13 @@ External API
 
 The optimizer will eventually analyze incoming requests and determine whether a request can be:
 * served from cache
-* combined with an existing request
+* combined with an existing in-flight request
 * forwarded directly
 * delayed according to priority
 * retried after failure
 * handled through fallback mechanisms
 
-For the current prototype, development is intentionally incremental. The first objective is to establish a clean foundation and a realistic, controllable mock external API before implementing optimization algorithms.
+For the current prototype, development is intentionally incremental. The first objective was to establish a clean foundation (Phase 1), a controllable mock external API (Phase 2), and a reliable, transparent API proxy (Phase 3) before introducing optimization algorithms.
 
 ## Problem Statement
 
@@ -54,27 +54,39 @@ The project aims to investigate how middleware-level optimization can reduce thi
 
 | Phase   | Component                  | Status      |
 | ------- | -------------------------- | ----------- |
-| Phase 1 | Project setup              | ✅ Complete  |
+| Phase 1 | Project setup & foundation | ✅ Complete  |
 | Phase 1 | FastAPI foundation         | ✅ Complete  |
 | Phase 1 | Mock API foundation        | ✅ Complete  |
 | Phase 1 | Test environment           | ✅ Complete  |
 | Phase 2 | Mock external API behavior | ✅ Complete  |
-| Phase 3 | API proxy                  | ⏳ Next      |
-| Phase 4 | Request normalization      | ⏳ Planned   |
+| Phase 3 | Basic API proxy            | ✅ Complete  |
+| Phase 4 | Request normalization      | ⏳ Next      |
 | Phase 5 | In-memory cache            | ⏳ Planned   |
 | Phase 6 | TTL & cache metrics        | ⏳ Planned   |
 | Phase 7 | Request deduplication      | ⏳ Planned   |
 | Phase 8 | Request coalescing         | ⏳ Planned   |
-| Phase 9 | Benchmarking               | ⏳ Planned   |
+| Phase 9 | Metrics & benchmarking     | ⏳ Planned   |
 
-## Current Architecture
+## Current Working Architecture
 
-With Phase 2 complete, the Mock API provides a realistic, slow external service with configurable latency, deterministic failure simulation, request logging, and observability counters:
+With Phase 3 complete, the Optimizer acts as a transparent proxy middleware forwarding requests to the upstream Mock API without optimization:
 
 ```text
-                    CLIENT
-                       │
-                       ▼
+                     CLIENT
+                        │
+                        │ HTTP Request (GET /proxy/data/{id})
+                        ▼
+              ┌────────────────────────┐
+              │ Intelligent API        │
+              │ Traffic Optimizer      │
+              │ (Port 8000)            │
+              │                        │
+              │ • /health              │
+              │ • /proxy/data/{id}     │
+              └─────────┬──────────────┘
+                        │
+                        │ Asynchronous HTTP Forwarding (GET /api/data/{id})
+                        ▼
               ┌────────────────────────┐
               │   Mock External API    │
               │   (Port 8001)          │
@@ -83,15 +95,22 @@ With Phase 2 complete, the Mock API provides a realistic, slow external service 
               │ • /api/data/{id}       │
               │ • /stats               │
               │ • /stats/reset         │
-              └────────────────────────┘
-
+              └─────────┬──────────────┘
+                        │
+                        │ Response + Headers
+                        ▼
               ┌────────────────────────┐
-              │   FastAPI App (Proxy)  │
-              │   (Port 8000)          │
-              │                        │
-              │ • /health              │
-              └────────────────────────┘
+              │ Intelligent API        │
+              │ Traffic Optimizer      │
+              │ (Proxy Client)         │
+              └─────────┬──────────────┘
+                        │
+                        │ Forwarded Response
+                        ▼
+                     CLIENT
 ```
+
+> **Note:** The proxy currently forwards requests transparently without optimization. This intentionally establishes the experimental **baseline** for future optimization phases.
 
 ## Target Prototype Architecture
 
@@ -135,23 +154,31 @@ With Phase 2 complete, the Mock API provides a realistic, slow external service 
 ```
 This architecture represents the intended prototype and will be implemented incrementally in future phases.
 
-## The Core Idea
+## The Core Baseline Concept
+
+At the end of Phase 3, the baseline is established:
+
+```text
+Client Requests = External API Requests
+```
 
 Suppose 100 clients request the same resource:
 
 ```text
-GET /weather?city=Ahmedabad
+GET /proxy/data/weather-ahmedabad
 ```
 
-Without optimization:
+In the current Phase 3 baseline:
 
 ```text
 100 client requests
         ↓
+100 proxy requests
+        ↓
 100 external API calls
 ```
 
-The eventual optimizer should aim for:
+Future phases (normalization, caching, coalescing) will attempt to optimize this relationship toward:
 
 ```text
 100 client requests
@@ -161,7 +188,29 @@ The eventual optimizer should aim for:
 100 responses
 ```
 
-This is the fundamental behavior that later features such as caching and request coalescing will investigate. *(Planned prototype behavior, not a current result)*
+## Baseline Experiment
+
+A simple verification experiment proves the 1:1 baseline:
+
+1. Reset Mock API statistics:
+   ```text
+   POST http://127.0.0.1:8001/stats/reset
+   ```
+2. Send 5 client requests through the Optimizer proxy:
+   ```text
+   GET http://127.0.0.1:8000/proxy/data/weather-ahmedabad (x5)
+   ```
+3. Check Mock API statistics:
+   ```text
+   GET http://127.0.0.1:8001/stats
+   ```
+4. Observed relationship:
+   ```text
+   Client requests:   5
+   External calls:    5
+   ```
+
+*(Note: Benchmark latency and throughput comparisons will be evaluated in Phase 9; no speculative numbers are reported.)*
 
 ## Technology Stack
 
@@ -170,7 +219,7 @@ This is the fundamental behavior that later features such as caching and request
 | Python         | Core implementation           |
 | FastAPI        | HTTP API framework            |
 | Uvicorn        | ASGI server                   |
-| httpx          | Async HTTP client             |
+| httpx          | Async HTTP client for proxy   |
 | Pydantic       | Data validation/configuration |
 | pytest         | Testing                       |
 | pytest-asyncio | Async testing                 |
@@ -210,6 +259,7 @@ intelligent-api-optimizer/
 ├── tests/
 │   ├── __init__.py
 │   ├── test_mock_api.py
+│   ├── test_proxy.py
 │   ├── test_cache.py
 │   ├── test_normalizer.py
 │   └── test_optimizer.py
@@ -220,7 +270,7 @@ intelligent-api-optimizer/
 └── README.md
 ```
 
-## Installation
+## Installation & Setup
 
 ```bash
 git clone <repository-url>
@@ -243,114 +293,95 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Running the Backend
+## Running the Services
 
-```bash
-uvicorn app.main:app --reload
-```
+To run the complete system, start both services in separate terminal windows:
 
-Backend:
-`http://127.0.0.1:8000`
+### Terminal 1 — Mock External API (Port 8001)
 
-Health endpoint:
-```text
-GET /health
-```
-
-Expected response:
-```json
-{
-  "status": "ok"
-}
-```
-
-## Running the Mock External API
-
-```bash
+```powershell
+.\.venv\Scripts\Activate.ps1
 uvicorn mock_api.main:app --port 8001 --reload
 ```
 
-Mock API:
-`http://127.0.0.1:8001`
+### Terminal 2 — Optimizer Proxy Application (Port 8000)
 
-### Endpoints Implemented
-
-#### 1. Health Check
-```text
-GET /health
-```
-Response:
-```json
-{
-  "status": "mock-api-ok"
-}
+```powershell
+.\.venv\Scripts\Activate.ps1
+uvicorn app.main:app --port 8000 --reload
 ```
 
-#### 2. Resource Data Endpoint
-```text
-GET /api/data/{resource_id}
-GET /api/data/{resource_id}?delay_ms=100
-```
-Response:
-```json
-{
-  "resource_id": "weather-ahmedabad",
-  "data": {
-    "temperature": 30,
-    "condition": "clear",
-    "details": "Data payload for weather-ahmedabad"
-  },
-  "served_at": "2026-09-18T19:18:00.306701+00:00",
-  "request_id": "mock-000001"
-}
-```
-* Response Headers: `X-Request-Id: mock-000001`, `X-Mock-Delay-Ms: 500`
-* Deterministic Failure Mode: Requesting `GET /api/data/fail-test` returns HTTP 500 (`"Simulated external API failure"`).
+## Implemented Endpoints
 
-#### 3. Observability Statistics
-```text
-GET /stats
-```
-Response:
-```json
-{
-  "total_requests": 5,
-  "uptime_seconds": 12.45
-}
-```
+### 1. Optimizer Application (`http://127.0.0.1:8000`)
 
-#### 4. Reset Statistics
-```text
-POST /stats/reset
-```
-Response:
-```json
-{
-  "status": "reset",
-  "total_requests": 0
-}
-```
+* **Health Check**:
+  ```text
+  GET /health
+  ```
+  Response: `{"status": "ok"}`
 
-### Configuration Options
-Configurable via environment variables (or `.env`):
-* `MOCK_API_DELAY_MS`: Default artificial latency in milliseconds (default: `500`).
+* **Proxy Resource Endpoint**:
+  ```text
+  GET /proxy/data/{resource_id}
+  GET /proxy/data/{resource_id}?delay_ms=0
+  ```
+  Transparently forwards request to upstream Mock API. Forwards query parameters and returns upstream JSON payload.
+  - Connection failures to upstream return HTTP `502 Bad Gateway` (`{"error": "Upstream API unavailable"}`).
+  - Upstream request timeouts return HTTP `504 Gateway Timeout` (`{"error": "Upstream API timeout"}`).
+
+### 2. Mock External API (`http://127.0.0.1:8001`)
+
+* **Health Check**:
+  ```text
+  GET /health
+  ```
+  Response: `{"status": "mock-api-ok"}`
+
+* **Resource Data Endpoint**:
+  ```text
+  GET /api/data/{resource_id}
+  ```
+  Returns deterministic payload for a given resource identifier. Supports query override `?delay_ms=...`.
+
+* **Statistics**:
+  ```text
+  GET /stats
+  ```
+  Returns total external request counter and uptime.
+
+* **Reset Statistics**:
+  ```text
+  POST /stats/reset
+  ```
+  Resets in-memory request counter back to `0`.
+
+## Configuration Options
+
+Configurable via environment variables or `.env`:
+* `MOCK_API_URL`: Base URL of upstream mock API (default: `http://127.0.0.1:8001`).
+* `UPSTREAM_TIMEOUT_SECONDS`: Request timeout in seconds for proxy client (default: `5.0`).
+* `MOCK_API_DELAY_MS`: Default artificial upstream latency in milliseconds (default: `500`).
 * `MOCK_API_FAILURE_RATE`: Simulated probabilistic failure percentage `0-100` (default: `0`).
+* `CACHE_TTL_SECONDS`: Reserved for future caching phases (default: `30`).
 
 ## Testing
 
-Run the test suite:
+Run the automated test suite:
 ```bash
 pytest
 ```
 
 The test suite validates:
-* Project foundation and import resolution
-* Mock API health check (`/health`)
-* Resource payload structure and deterministic behavior (`/api/data/{resource_id}`)
-* In-memory request counter tracking
-* Statistics reset endpoint (`/stats/reset`)
-* Deterministic failure triggering (`/api/data/fail-test`)
-* Latency override configuration
+* Project foundation and imports
+* Mock API endpoints (health, resource data, stats, reset, failure mode, latency override)
+* Optimizer health check
+* Proxy forwarding success and payload preservation
+* Correct upstream request routing and query parameter forwarding
+* Upstream HTTP error propagation (e.g. 500)
+* Upstream connection failure handling (502 Bad Gateway)
+* Upstream timeout handling (504 Gateway Timeout)
+* End-to-end integration test (Client → Optimizer → Mock API → Optimizer → Client)
 
 ## Development Roadmap
 
@@ -366,18 +397,15 @@ The test suite validates:
 * In-memory request counter and observability endpoints (`/stats`, `/stats/reset`)
 * Request ID generation and lightweight request logging
 
-### Phase 3 — Basic API Proxy
-Planned:
-```text
-Client
-   ↓
-Optimizer
-   ↓
-Mock API
-```
+### Phase 3 — Basic API Proxy ✅
+* Asynchronous proxy client (`app/proxy/client.py`) using `httpx.AsyncClient`
+* Transparent proxy route (`GET /proxy/data/{resource_id}`)
+* Upstream status code, error, and timeout preservation
+* Query parameter forwarding
+* Baseline verification: 1:1 client-to-external request relationship
 
 ### Phase 4 — Request Normalization
-Convert logically equivalent requests into a consistent representation.
+Convert logically equivalent requests into a consistent canonical representation.
 
 ### Phase 5 — In-Memory Cache
 Implement:
@@ -396,7 +424,7 @@ Implement:
 Prevent unnecessary duplicate processing.
 
 ### Phase 8 — Request Coalescing
-This will be one of the important prototype features. Multiple simultaneous requests for the same resource should ideally share one in-flight external request.
+Multiple simultaneous requests for the same resource share one in-flight external request.
 
 ### Phase 9 — Metrics & Benchmarking
 Compare:
@@ -413,8 +441,6 @@ Metrics will include:
 * P95 latency
 * Throughput
 
-*(Note: Benchmark numbers will be measured experimentally in Phase 9; no speculative numbers are reported.)*
-
 ## Benchmarking Philosophy
 
 The project will not assume that an optimization is effective simply because it sounds theoretically useful. Each optimization will be evaluated experimentally:
@@ -430,7 +456,7 @@ Measure again
    ↓
 Compare
 ```
-This is an essential engineering principle of the project.
+Without establishing the Phase 3 baseline, we cannot meaningfully claim that caching or request coalescing improves the system.
 
 ## Future Extensions
 * LRU cache
@@ -448,6 +474,7 @@ This is an essential engineering principle of the project.
 
 ## Engineering Principles
 * **Measure before optimizing**
+* **Establish a clear baseline first**
 * **Keep the prototype simple**
 * **Separate components by responsibility**
 * **Prefer asynchronous I/O**
@@ -460,18 +487,15 @@ This is an essential engineering principle of the project.
 
 > **Simple interface, sophisticated core.**
 
-The external client should not need to understand the optimizer. The optimizer should behave as middleware between the client and the external service while internally applying increasingly sophisticated traffic-management strategies.
+The external client should not need to understand the optimizer. The optimizer behaves as transparent middleware between the client and the external service while internally applying increasingly sophisticated traffic-management strategies.
 
 ## What This Project Demonstrates
 
 * Backend engineering
-* HTTP/REST architecture
+* HTTP/REST architecture & reverse proxy design
 * Asynchronous programming
-* Caching
-* Concurrency
-* Request deduplication
+* Caching & coalescing
+* Concurrency management
 * Distributed-systems concepts
-* Performance engineering
-* Load testing
-* System design
-* Observability
+* Performance engineering & benchmarking
+* System design & observability
