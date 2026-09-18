@@ -2,7 +2,7 @@
 
 > Adaptive middleware designed to reduce redundant API traffic, latency, and backend load.
 
-`🚧 Status: Phase 1 Complete — Foundation Setup`
+`🚧 Status: Phase 2 Complete — Mock External API`
 
 ## Project Overview
 
@@ -30,7 +30,7 @@ The optimizer will eventually analyze incoming requests and determine whether a 
 * retried after failure
 * handled through fallback mechanisms
 
-For the current prototype, development is intentionally incremental. The first objective is to establish a clean foundation before implementing optimization algorithms.
+For the current prototype, development is intentionally incremental. The first objective is to establish a clean foundation and a realistic, controllable mock external API before implementing optimization algorithms.
 
 ## Problem Statement
 
@@ -52,41 +52,45 @@ The project aims to investigate how middleware-level optimization can reduce thi
 
 ## Current Development Status
 
-| Phase   | Component                  | Status     |
-| ------- | -------------------------- | ---------- |
-| Phase 1 | Project setup              | ✅ Complete |
-| Phase 1 | FastAPI foundation         | ✅ Complete |
-| Phase 1 | Mock API foundation        | ✅ Complete |
-| Phase 1 | Test environment           | ✅ Complete |
-| Phase 2 | Mock external API behavior | ⏳ Next     |
-| Phase 3 | API proxy                  | ⏳ Planned  |
-| Phase 4 | Request normalization      | ⏳ Planned  |
-| Phase 5 | In-memory cache            | ⏳ Planned  |
-| Phase 6 | TTL & cache metrics        | ⏳ Planned  |
-| Phase 7 | Request deduplication      | ⏳ Planned  |
-| Phase 8 | Request coalescing         | ⏳ Planned  |
-| Phase 9 | Benchmarking               | ⏳ Planned  |
+| Phase   | Component                  | Status      |
+| ------- | -------------------------- | ----------- |
+| Phase 1 | Project setup              | ✅ Complete  |
+| Phase 1 | FastAPI foundation         | ✅ Complete  |
+| Phase 1 | Mock API foundation        | ✅ Complete  |
+| Phase 1 | Test environment           | ✅ Complete  |
+| Phase 2 | Mock external API behavior | ✅ Complete  |
+| Phase 3 | API proxy                  | ⏳ Next      |
+| Phase 4 | Request normalization      | ⏳ Planned   |
+| Phase 5 | In-memory cache            | ⏳ Planned   |
+| Phase 6 | TTL & cache metrics        | ⏳ Planned   |
+| Phase 7 | Request deduplication      | ⏳ Planned   |
+| Phase 8 | Request coalescing         | ⏳ Planned   |
+| Phase 9 | Benchmarking               | ⏳ Planned   |
 
 ## Current Architecture
 
-Because Phase 1 is only the foundation, the current architecture consists of two independent services:
+With Phase 2 complete, the Mock API provides a realistic, slow external service with configurable latency, deterministic failure simulation, request logging, and observability counters:
 
 ```text
-                    ┌──────────────────────┐
-                    │       Client         │
-                    └──────────┬───────────┘
-                               │
-                               ▼
-                    ┌──────────────────────┐
-                    │    FastAPI App       │
-                    │    /health           │
-                    └──────────────────────┘
+                    CLIENT
+                       │
+                       ▼
+              ┌────────────────────────┐
+              │   Mock External API    │
+              │   (Port 8001)          │
+              │                        │
+              │ • /health              │
+              │ • /api/data/{id}       │
+              │ • /stats               │
+              │ • /stats/reset         │
+              └────────────────────────┘
 
-
-                    ┌──────────────────────┐
-                    │     Mock API         │
-                    │     /health          │
-                    └──────────────────────┘
+              ┌────────────────────────┐
+              │   FastAPI App (Proxy)  │
+              │   (Port 8000)          │
+              │                        │
+              │ • /health              │
+              └────────────────────────┘
 ```
 
 ## Target Prototype Architecture
@@ -129,7 +133,7 @@ Because Phase 1 is only the foundation, the current architecture consists of two
                                       ▼
                                    Response
 ```
-This architecture represents the intended prototype and will be implemented incrementally.
+This architecture represents the intended prototype and will be implemented incrementally in future phases.
 
 ## The Core Idea
 
@@ -179,16 +183,36 @@ This is the fundamental behavior that later features such as caching and request
 intelligent-api-optimizer/
 │
 ├── app/
+│   ├── __init__.py
 │   ├── main.py
 │   ├── proxy/
+│   │   ├── __init__.py
+│   │   └── client.py
 │   ├── cache/
+│   │   ├── __init__.py
+│   │   ├── entry.py
+│   │   └── manager.py
 │   ├── requests/
+│   │   ├── __init__.py
+│   │   ├── coalescer.py
+│   │   └── normalizer.py
 │   └── metrics/
+│       ├── __init__.py
+│       └── collector.py
 │
 ├── mock_api/
-│   └── main.py
+│   ├── __init__.py
+│   ├── main.py
+│   ├── config.py
+│   ├── models.py
+│   └── state.py
 │
 ├── tests/
+│   ├── __init__.py
+│   ├── test_mock_api.py
+│   ├── test_cache.py
+│   ├── test_normalizer.py
+│   └── test_optimizer.py
 │
 ├── requirements.txt
 ├── .env.example
@@ -240,7 +264,7 @@ Expected response:
 }
 ```
 
-## Running the Mock API
+## Running the Mock External API
 
 ```bash
 uvicorn mock_api.main:app --port 8001 --reload
@@ -249,42 +273,98 @@ uvicorn mock_api.main:app --port 8001 --reload
 Mock API:
 `http://127.0.0.1:8001`
 
-Health endpoint:
+### Endpoints Implemented
+
+#### 1. Health Check
 ```text
 GET /health
 ```
-
-Expected response:
+Response:
 ```json
 {
   "status": "mock-api-ok"
 }
 ```
 
+#### 2. Resource Data Endpoint
+```text
+GET /api/data/{resource_id}
+GET /api/data/{resource_id}?delay_ms=100
+```
+Response:
+```json
+{
+  "resource_id": "weather-ahmedabad",
+  "data": {
+    "temperature": 30,
+    "condition": "clear",
+    "details": "Data payload for weather-ahmedabad"
+  },
+  "served_at": "2026-09-18T19:18:00.306701+00:00",
+  "request_id": "mock-000001"
+}
+```
+* Response Headers: `X-Request-Id: mock-000001`, `X-Mock-Delay-Ms: 500`
+* Deterministic Failure Mode: Requesting `GET /api/data/fail-test` returns HTTP 500 (`"Simulated external API failure"`).
+
+#### 3. Observability Statistics
+```text
+GET /stats
+```
+Response:
+```json
+{
+  "total_requests": 5,
+  "uptime_seconds": 12.45
+}
+```
+
+#### 4. Reset Statistics
+```text
+POST /stats/reset
+```
+Response:
+```json
+{
+  "status": "reset",
+  "total_requests": 0
+}
+```
+
+### Configuration Options
+Configurable via environment variables (or `.env`):
+* `MOCK_API_DELAY_MS`: Default artificial latency in milliseconds (default: `500`).
+* `MOCK_API_FAILURE_RATE`: Simulated probabilistic failure percentage `0-100` (default: `0`).
+
 ## Testing
 
-Run:
+Run the test suite:
 ```bash
 pytest
 ```
-Phase 1 tests currently focus on validating the project foundation and imports.
+
+The test suite validates:
+* Project foundation and import resolution
+* Mock API health check (`/health`)
+* Resource payload structure and deterministic behavior (`/api/data/{resource_id}`)
+* In-memory request counter tracking
+* Statistics reset endpoint (`/stats/reset`)
+* Deterministic failure triggering (`/api/data/fail-test`)
+* Latency override configuration
 
 ## Development Roadmap
 
 ### Phase 1 — Foundation ✅
-* Python environment
-* FastAPI application
-* Mock API foundation
-* Project structure
-* Test environment
-* Git configuration
+* Python environment & project structure
+* FastAPI application & Mock API foundation
+* Test environment & Git configuration
 
-### Phase 2 — Mock External API
-Planned:
-* configurable response
-* artificial latency
-* simulated failures
-* request counter
+### Phase 2 — Mock External API ✅
+* Deterministic resource endpoint (`/api/data/{resource_id}`)
+* Configurable artificial latency (`MOCK_API_DELAY_MS` / query override)
+* Deterministic (`fail-test`) and probabilistic failure modes
+* In-memory request counter and observability endpoints (`/stats`, `/stats/reset`)
+* Request ID generation and lightweight request logging
 
 ### Phase 3 — Basic API Proxy
 Planned:
@@ -333,9 +413,11 @@ Metrics will include:
 * P95 latency
 * Throughput
 
+*(Note: Benchmark numbers will be measured experimentally in Phase 9; no speculative numbers are reported.)*
+
 ## Benchmarking Philosophy
 
-The project will not assume that an optimization is effective simply because it sounds theoretically useful. Each optimization will be evaluated experimentally.
+The project will not assume that an optimization is effective simply because it sounds theoretically useful. Each optimization will be evaluated experimentally:
 
 ```text
 Baseline
@@ -348,7 +430,7 @@ Measure again
    ↓
 Compare
 ```
-This should become an important engineering principle of the project.
+This is an essential engineering principle of the project.
 
 ## Future Extensions
 * LRU cache
