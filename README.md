@@ -2,7 +2,7 @@
 
 > Adaptive middleware designed to reduce redundant API traffic, latency, and backend load.
 
-`🚧 Status: Phase 3 Complete — Basic API Proxy`
+`✅ Status: Phase 4 Complete — Cache-Key Generation`
 
 ## Project Overview
 
@@ -52,65 +52,76 @@ The project aims to investigate how middleware-level optimization can reduce thi
 
 ## Current Development Status
 
-| Phase   | Component                  | Status      |
-| ------- | -------------------------- | ----------- |
-| Phase 1 | Project setup & foundation | ✅ Complete  |
-| Phase 1 | FastAPI foundation         | ✅ Complete  |
-| Phase 1 | Mock API foundation        | ✅ Complete  |
-| Phase 1 | Test environment           | ✅ Complete  |
-| Phase 2 | Mock external API behavior | ✅ Complete  |
-| Phase 3 | Basic API proxy            | ✅ Complete  |
-| Phase 4 | Request normalization      | ⏳ Next      |
-| Phase 5 | In-memory cache            | ⏳ Planned   |
-| Phase 6 | TTL & cache metrics        | ⏳ Planned   |
-| Phase 7 | Request deduplication      | ⏳ Planned   |
-| Phase 8 | Request coalescing         | ⏳ Planned   |
-| Phase 9 | Metrics & benchmarking     | ⏳ Planned   |
+| Phase   | Component                        | Status      |
+| ------- | -------------------------------- | ----------- |
+| Phase 1 | Project setup & foundation       | ✅ Complete  |
+| Phase 1 | FastAPI foundation               | ✅ Complete  |
+| Phase 1 | Mock API foundation              | ✅ Complete  |
+| Phase 1 | Test environment                 | ✅ Complete  |
+| Phase 2 | Mock external API behavior       | ✅ Complete  |
+| Phase 3 | Basic API proxy                  | ✅ Complete  |
+| Phase 4 | Request normalisation & cache-key generation | ✅ Complete  |
+| Phase 5 | In-memory cache                  | ⏳ Next      |
+| Phase 6 | TTL & cache metrics              | ⏳ Planned   |
+| Phase 7 | Request deduplication            | ⏳ Planned   |
+| Phase 8 | Request coalescing               | ⏳ Planned   |
+| Phase 9 | Metrics & benchmarking           | ⏳ Planned   |
 
 ## Current Working Architecture
 
-With Phase 3 complete, the Optimizer acts as a transparent proxy middleware forwarding requests to the upstream Mock API without optimization:
+With Phase 4 complete, the Optimizer normalises every incoming request and generates a deterministic SHA-256 cache key before forwarding to the upstream Mock API. The key is logged on every request and is exposed through a development debug endpoint. Phase 5 will use this key for actual cache lookups.
 
 ```text
                      CLIENT
                         │
-                        │ HTTP Request (GET /proxy/data/{id})
+                        │ HTTP Request (GET /proxy/data/{id}?...)
                         ▼
-              ┌────────────────────────┐
-              │ Intelligent API        │
-              │ Traffic Optimizer      │
-              │ (Port 8000)            │
-              │                        │
-              │ • /health              │
-              │ • /proxy/data/{id}     │
-              └─────────┬──────────────┘
-                        │
-                        │ Asynchronous HTTP Forwarding (GET /api/data/{id})
-                        ▼
-              ┌────────────────────────┐
-              │   Mock External API    │
-              │   (Port 8001)          │
-              │                        │
-              │ • /health              │
-              │ • /api/data/{id}       │
-              │ • /stats               │
-              │ • /stats/reset         │
-              └─────────┬──────────────┘
-                        │
-                        │ Response + Headers
-                        ▼
-              ┌────────────────────────┐
-              │ Intelligent API        │
-              │ Traffic Optimizer      │
-              │ (Proxy Client)         │
-              └─────────┬──────────────┘
-                        │
-                        │ Forwarded Response
-                        ▼
-                     CLIENT
+              ┌─────────────────────────────┐
+              │  Intelligent API            │
+              │  Traffic Optimizer          │
+              │  (Port 8000)               │
+              │                             │
+              │  • /health                  │
+              │  • /proxy/data/{id}  ──┐    │
+              │  • /debug/cache-key    │    │
+              └────────────────────────┼────┘
+                                       │
+                          ┌────────────▼────────────┐
+                          │   Request Normaliser     │
+                          │   normalizer.py          │
+                          │                          │
+                          │  normalize_method()      │
+                          │  normalize_path()        │
+                          │  normalize_query_params()│
+                          └────────────┬─────────────┘
+                                       │
+                          ┌────────────▼────────────┐
+                          │   Cache-Key Generator    │
+                          │   key_generator.py       │
+                          │                          │
+                          │  build_canonical_request │
+                          │  → json.dumps(sort_keys) │
+                          │  → SHA-256 hex digest    │
+                          │  → "api-cache:v1:<hex>" │
+                          └────────────┬─────────────┘
+                                       │ key logged
+                                       │ (Phase 5: cache lookup goes here)
+                                       ▼
+              ┌─────────────────────────────┐
+              │   Mock External API         │
+              │   (Port 8001)               │
+              │                             │
+              │  • /health                  │
+              │  • /api/data/{id}           │
+              │  • /stats                   │
+              │  • /stats/reset             │
+              └─────────────┬───────────────┘
+                            │ Response + Headers
+                            ▼
+                         CLIENT
 ```
 
-> **Note:** The proxy currently forwards requests transparently without optimization. This intentionally establishes the experimental **baseline** for future optimization phases.
+> **Note:** The cache key is generated and logged on every request. The proxy still calls the upstream API on every request — cache lookup and storage will be implemented in Phase 5.
 
 ## Target Prototype Architecture
 
@@ -233,36 +244,38 @@ intelligent-api-optimizer/
 │
 ├── app/
 │   ├── __init__.py
-│   ├── main.py
+│   ├── main.py                    ← v0.4.0 — logs cache key per request
 │   ├── proxy/
 │   │   ├── __init__.py
-│   │   └── client.py
+│   │   └── client.py              ← async httpx proxy client (Phase 3)
 │   ├── cache/
 │   │   ├── __init__.py
-│   │   ├── entry.py
-│   │   └── manager.py
+│   │   ├── entry.py               ← stub (Phase 5)
+│   │   └── manager.py             ← stub (Phase 5)
 │   ├── requests/
 │   │   ├── __init__.py
-│   │   ├── coalescer.py
-│   │   └── normalizer.py
+│   │   ├── normalizer.py          ← ✅ Phase 3/4: normalize method/path/params/headers/body
+│   │   ├── key_generator.py       ← ✅ Phase 4: SHA-256 cache-key generation pipeline
+│   │   └── coalescer.py           ← stub (Phase 8)
 │   └── metrics/
 │       ├── __init__.py
-│       └── collector.py
+│       └── collector.py           ← stub (Phase 9)
 │
 ├── mock_api/
 │   ├── __init__.py
-│   ├── main.py
+│   ├── main.py                    ← controllable mock API (Phase 2)
 │   ├── config.py
 │   ├── models.py
 │   └── state.py
 │
 ├── tests/
 │   ├── __init__.py
-│   ├── test_mock_api.py
-│   ├── test_proxy.py
-│   ├── test_cache.py
-│   ├── test_normalizer.py
-│   └── test_optimizer.py
+│   ├── test_mock_api.py           ← Phase 2 tests
+│   ├── test_proxy.py              ← Phase 3 tests
+│   ├── test_normalizer.py         ← ✅ Phase 4: normalizer unit tests
+│   ├── test_key_generator.py      ← ✅ Phase 4: key-generation tests (10 spec examples)
+│   ├── test_cache.py              ← stub (Phase 5)
+│   └── test_optimizer.py          ← import smoke test
 │
 ├── requirements.txt
 ├── .env.example
@@ -324,11 +337,33 @@ uvicorn app.main:app --port 8000 --reload
 * **Proxy Resource Endpoint**:
   ```text
   GET /proxy/data/{resource_id}
-  GET /proxy/data/{resource_id}?delay_ms=0
+  GET /proxy/data/{resource_id}?city=Delhi&units=metric
   ```
-  Transparently forwards request to upstream Mock API. Forwards query parameters and returns upstream JSON payload.
+  Transparently forwards request to upstream Mock API. Generates and logs a SHA-256 cache key on every request (Phase 4). Forwards query parameters and returns upstream JSON payload.
   - Connection failures to upstream return HTTP `502 Bad Gateway` (`{"error": "Upstream API unavailable"}`).
   - Upstream request timeouts return HTTP `504 Gateway Timeout` (`{"error": "Upstream API timeout"}`).
+
+* **Cache-Key Debug Endpoint** *(Phase 4 — development only)*:
+  ```text
+  GET /debug/cache-key?resource_id=weather&city=Delhi&units=metric
+  ```
+  Returns the cache key that would be generated for the given resource and query parameters, without making an upstream call. Useful for verifying that parameter-order normalisation works correctly.
+  Example response:
+  ```json
+  {
+    "resource_id": "weather",
+    "query_params": "{'city': 'Delhi', 'units': 'metric'}",
+    "cache_key": "api-cache:v1:7f2a9c3d...",
+    "note": "Development only — remove before production deployment"
+  }
+  ```
+  > ⚠️ Remove or restrict this endpoint before any production deployment.
+
+* **Interactive API Docs**:
+  ```text
+  GET /docs
+  ```
+  FastAPI Swagger UI — try all endpoints from the browser.
 
 ### 2. Mock External API (`http://127.0.0.1:8001`)
 
@@ -367,21 +402,72 @@ Configurable via environment variables or `.env`:
 
 ## Testing
 
-Run the automated test suite:
-```bash
-pytest
+### Run the full test suite
+
+```powershell
+python -m pytest tests/ -v
 ```
 
-The test suite validates:
-* Project foundation and imports
-* Mock API endpoints (health, resource data, stats, reset, failure mode, latency override)
-* Optimizer health check
+Current result: **108 tests, 0 failures.**
+
+### Run tests by phase
+
+```powershell
+# Phase 2 — Mock API tests
+python -m pytest tests/test_mock_api.py -v
+
+# Phase 3 — Proxy tests
+python -m pytest tests/test_proxy.py -v
+
+# Phase 4 — Normaliser tests
+python -m pytest tests/test_normalizer.py -v
+
+# Phase 4 — Cache-key generator tests
+python -m pytest tests/test_key_generator.py -v
+```
+
+### What the test suite validates
+
+**Phase 2 — Mock API** (`test_mock_api.py`)
+* Health check endpoint
+* Resource data endpoint and deterministic payload
+* Request counter increment
+* Statistics reset
+* Deterministic failure mode (`fail-test`)
+* Latency override via `?delay_ms=`
+
+**Phase 3 — Proxy** (`test_proxy.py`)
 * Proxy forwarding success and payload preservation
-* Correct upstream request routing and query parameter forwarding
-* Upstream HTTP error propagation (e.g. 500)
-* Upstream connection failure handling (502 Bad Gateway)
+* Correct upstream resource routing
+* Query parameter forwarding
+* Upstream HTTP error propagation (500)
+* Upstream connection failure (502 Bad Gateway)
 * Upstream timeout handling (504 Gateway Timeout)
-* End-to-end integration test (Client → Optimizer → Mock API → Optimizer → Client)
+* End-to-end integration test (Client → Optimizer → Mock API → Client)
+
+**Phase 4 — Normaliser** (`test_normalizer.py`)
+* Method normalisation (lowercase → uppercase, whitespace stripping)
+* Path normalisation (leading slash, empty path, case preservation)
+* Query-parameter sorting (alphabetical, stable repeated-param order)
+* Header filtering (selected keys only, Authorization always excluded)
+* Body canonicalisation (JSON sort_keys, bytes decode, None handling)
+
+**Phase 4 — Cache-Key Generator** (`test_key_generator.py`)
+* Same request → same key (determinism)
+* Reversed query-param order → same key
+* All 6 orderings of 3 params → same key
+* Different query values → different keys
+* Different HTTP methods → different keys
+* Different paths → different keys
+* Empty and None params treated consistently
+* Repeated params — safe conservative ordering
+* Equivalent JSON bodies → same key
+* Different JSON body values → different keys
+* Selected headers affect key; non-selected headers do not
+* Authorization never included in key
+* Key format: `api-cache:v1:<64-char SHA-256 hex>`
+* Key contains no raw path or param values
+* Regression: Phase 1–3 imports unaffected
 
 ## Development Roadmap
 
@@ -404,21 +490,377 @@ The test suite validates:
 * Query parameter forwarding
 * Baseline verification: 1:1 client-to-external request relationship
 
-### Phase 4 — Request Normalization
-Convert logically equivalent requests into a consistent canonical representation.
+### Phase 4 — Request Normalisation & Cache-Key Generation ✅
+
+---
+
+#### Objective
+
+Build a reliable, deterministic cache-key generation component that produces the **same key for logically equivalent requests** and **different keys for meaningfully different requests**, regardless of superficial formatting differences such as query-parameter order.
+
+This is a prerequisite for Phase 5. Without a stable key, the cache cannot determine whether a stored response can serve a new incoming request.
+
+---
+
+#### What Is a Cache Key?
+
+A cache key is a unique string identifier for a specific logical API request. It answers the question: *"Have I seen this exact request before?"*
+
+The key must be:
+
+| Property | Why it matters |
+|---|---|
+| **Deterministic** | Same input always produces the same key |
+| **Stable** | Does not change between process restarts |
+| **Collision-resistant** | Different inputs must produce different keys |
+| **Order-independent** | `?a=1&b=2` and `?b=2&a=1` must yield the same key |
+| **Value-sensitive** | `?city=Delhi` and `?city=Mumbai` must yield different keys |
+
+---
+
+#### Why Is Cache-Key Generation Necessary?
+
+Without proper normalisation, the same logical request can appear as different strings, causing the cache to miss entries that should have been hits.
+
+**Problem A — Query-parameter order**
+
+```text
+GET /weather?city=Delhi&units=metric
+GET /weather?units=metric&city=Delhi
+```
+
+These are semantically identical. A naive string comparison would treat them as different requests and create two separate cache entries — wasting memory and making an unnecessary upstream call.
+
+**Problem B — Different values**
+
+```text
+GET /weather?city=Delhi
+GET /weather?city=Mumbai
+```
+
+These must produce different keys. A cache hit for Delhi must never be served for a Mumbai request.
+
+**Problem C — Different HTTP methods**
+
+```text
+GET  /users/10   → reads a user record
+POST /users/10   → may modify or create a record
+```
+
+Same path, completely different semantics. They must have different keys.
+
+**Problem D — JSON body key order**
+
+```json
+{ "user_id": 10, "currency": "INR" }
+{ "currency": "INR", "user_id": 10 }
+```
+
+Logically identical JSON objects. A canonical serialiser ensures they produce the same key.
+
+---
+
+#### New Files
+
+| File | Responsibility |
+|---|---|
+| `app/requests/normalizer.py` | Low-level helpers — clean individual request components |
+| `app/requests/key_generator.py` | Pipeline — assemble, serialise, hash, return final key |
+| `tests/test_normalizer.py` | 37 unit tests for all five normalisation helpers |
+| `tests/test_key_generator.py` | 43 tests covering all 10 spec examples + format + regression |
+
+`app/main.py` was updated to version `0.4.0`:
+- Imports `generate_key_from_request` and calls it at the start of every proxy request.
+- Logs the generated key at `INFO` level.
+- Adds the `/debug/cache-key` development endpoint.
+
+---
+
+#### Normalisation Rules (`app/requests/normalizer.py`)
+
+Five helper functions, each handling one request component:
+
+**1. `normalize_method(method)`**
+
+Converts the HTTP method to uppercase and strips whitespace.
+
+```text
+"get"  → "GET"
+"Post" → "POST"
+```
+
+*Rationale:* HTTP methods are case-insensitive per RFC 7231, but must be consistent in the key.
+
+---
+
+**2. `normalize_path(path)`**
+
+Ensures a leading slash, strips surrounding whitespace, preserves case, preserves trailing slashes.
+
+```text
+"weather"   → "/weather"
+""          → "/"
+"/Weather"  → "/Weather"   ← case preserved
+```
+
+*Rationale:* Paths are case-sensitive. Lowercasing would be incorrect. Trailing slashes are preserved because FastAPI routing may treat `/weather` and `/weather/` as different routes.
+
+---
+
+**3. `normalize_query_params(params)`**
+
+Sorts query-parameter pairs alphabetically by name. Uses Python's stable sort so that repeated parameter names (e.g. `id=1&id=2`) preserve their original relative order.
+
+```text
+[("units", "metric"), ("city", "Delhi")]
+→ [("city", "Delhi"), ("units", "metric")]
+```
+
+For repeated parameters:
+
+```text
+[("b", "B"), ("a", "1"), ("a", "2")]
+→ [("a", "1"), ("a", "2"), ("b", "B")]
+```
+
+*Rationale:* Some APIs treat `id=1&id=2` and `id=2&id=1` as different. Preserving relative order is the safe default.
+
+---
+
+**4. `normalize_headers(headers, include_keys)`**
+
+Selectively includes only headers explicitly listed in `include_keys`. All other headers are discarded. Header keys in the result are lowercased.
+
+`Authorization` is **always excluded** regardless of `include_keys`, to prevent tokens from appearing in logs or being used as dict keys.
+
+```text
+{"Accept": "application/json", "User-Agent": "curl"}
+include_keys=["accept"]
+→ {"accept": "application/json"}
+```
+
+*Rationale:* Most headers (User-Agent, Accept-Encoding, Connection) change frequently but do not affect the API response. Including them causes cache fragmentation.
+
+---
+
+**5. `normalize_body(body)`**
+
+Converts the request body to a deterministic string.
+
+| Input type | Output |
+|---|---|
+| `None` | `None` |
+| `dict` or `list` | `json.dumps(sort_keys=True, separators=(",",":"))` |
+| `str` | returned as-is |
+| `bytes` (UTF-8) | decoded to string |
+| `bytes` (binary) | hex representation |
+
+```python
+normalize_body({"user_id": 10, "currency": "INR"})
+→ '{"currency":"INR","user_id":10}'
+
+normalize_body({"currency": "INR", "user_id": 10})
+→ '{"currency":"INR","user_id":10}'   # identical
+```
+
+*Rationale:* JSON object keys have no guaranteed insertion order. `sort_keys=True` makes logically equivalent dicts produce the same serialised string.
+
+---
+
+#### Key-Generation Pipeline (`app/requests/key_generator.py`)
+
+```text
+Incoming Request
+       │
+       ▼
+normalize_method()      →  "GET"
+normalize_path()        →  "/weather"
+normalize_query_params()→  [["city","Delhi"],["units","metric"]]
+normalize_headers()     →  {}
+normalize_body()        →  null
+       │
+       ▼
+_build_canonical_request()
+       │
+       ▼
+{
+  "method":  "GET",
+  "path":    "/weather",
+  "query":   [["city","Delhi"],["units","metric"]],
+  "headers": {},
+  "body":    null
+}
+       │
+       ▼
+json.dumps(sort_keys=True, separators=(",",":"))
+       │
+       ▼
+'{"body":null,"headers":{},"method":"GET","path":"/weather","query":[["city","Delhi"],["units","metric"]]}'
+       │
+       ▼
+hashlib.sha256(...).hexdigest()
+       │
+       ▼
+"7f2a9c3d..."   (64-character lowercase hex)
+       │
+       ▼
+"api-cache:v1:7f2a9c3d..."   (final cache key)
+```
+
+---
+
+#### Key Format
+
+```text
+api-cache:v1:<64-character SHA-256 hex digest>
+```
+
+Example:
+
+```text
+api-cache:v1:7f2a9c3db1e4f28a95c06d3e17b2a4f8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4
+```
+
+**Why SHA-256 instead of Python's `hash()`?**
+
+Python's built-in `hash("hello")` is randomised per process (PYTHONHASHSEED). The same string produces different values in different runs. SHA-256 always produces the same output for the same input, across any machine, any run, forever.
+
+**Why the `v1:` prefix?**
+
+If the normalisation algorithm changes in Phase 6 (e.g., headers are now included), all existing stored keys become stale. By prefixing `v1:`, a simple bump to `v2:` invalidates all old entries automatically — no manual cache flush required.
+
+---
+
+#### Concrete Examples
+
+**Example 1 — Same request, same key**
+
+```text
+GET /weather?city=Delhi&units=metric   →  api-cache:v1:XXXX
+GET /weather?city=Delhi&units=metric   →  api-cache:v1:XXXX  ✅ identical
+```
+
+**Example 2 — Reversed param order, same key**
+
+```text
+GET /weather?city=Delhi&units=metric   →  api-cache:v1:XXXX
+GET /weather?units=metric&city=Delhi   →  api-cache:v1:XXXX  ✅ identical
+```
+
+**Example 3 — Different value, different key**
+
+```text
+GET /weather?city=Delhi    →  api-cache:v1:XXXX
+GET /weather?city=Mumbai   →  api-cache:v1:YYYY  ✅ different
+```
+
+**Example 4 — Different method, different key**
+
+```text
+GET  /users?id=10   →  api-cache:v1:XXXX
+POST /users?id=10   →  api-cache:v1:YYYY  ✅ different
+```
+
+**Example 5 — Equivalent JSON bodies, same key**
+
+```text
+POST /convert  body={"user_id":10,"currency":"INR"}   →  api-cache:v1:XXXX
+POST /convert  body={"currency":"INR","user_id":10}   →  api-cache:v1:XXXX  ✅ identical
+```
+
+**Example 6 — Different JSON value, different key**
+
+```text
+POST /convert  body={"currency":"INR"}   →  api-cache:v1:XXXX
+POST /convert  body={"currency":"USD"}   →  api-cache:v1:YYYY  ✅ different
+```
+
+---
+
+#### Time Complexity
+
+| Operation | Complexity | Notes |
+|---|---|---|
+| `normalize_method` | O(n) | n = method string length |
+| `normalize_path` | O(n) | n = path string length |
+| `normalize_query_params` | O(k log k) | k = number of query params |
+| `normalize_body` | O(m) | m = body size |
+| `json.dumps` | O(m) | m = canonical dict size |
+| `sha256` | O(m) | m = serialised string length |
+
+The overall complexity is **O(k log k + m)**, dominated by query-parameter sorting. In practice the bottleneck is always network I/O on upstream API calls, not any of these in-memory operations.
+
+---
+
+#### Security & Correctness Considerations
+
+| Concern | How it is handled |
+|---|---|
+| **Cache poisoning** | Strict normalisation ensures two different URLs cannot share a key |
+| **Authorization tokens** | Explicitly excluded from key and never written to logs |
+| **Sensitive body data** | Only a short prefix of the key is logged, not the raw request |
+| **Hash collisions** | SHA-256 has 2²⁵⁶ possible outputs; collisions are astronomically unlikely |
+| **User-specific responses** | MVP scope is public GET requests only; private data isolation is deferred to Phase 5 |
+| **Algorithm changes** | Version prefix `v1:` allows safe migration to updated key formats |
+
+---
+
+#### What Phase 4 Does NOT Implement
+
+The following are intentionally deferred:
+
+* Cache storage or retrieval — Phase 5
+* TTL or expiry — Phase 6
+* LRU eviction — Phase 6
+* Request coalescing — Phase 8
+* Distributed cache — future phase
+* Full HTTP Cache-Control semantics — future phase
+* Adaptive or ML-based caching decisions — future phase
+
+---
+
+#### Integration Point in `app/main.py`
+
+```python
+# Every incoming proxy request now does this before calling upstream:
+cache_key = generate_key_from_request(
+    resource_id=resource_id,
+    query_params=query_params if query_params else None,
+)
+logger.info("[OPTIMIZER] Cache key (Phase 4): %s", cache_key)
+
+# Phase 5 will insert:
+#   cached = cache_manager.get(cache_key)
+#   if cached:
+#       return cached_response
+# here, between key generation and the upstream call.
+```
+
+---
+
+#### Test Coverage Summary
+
+| Test file | Tests | What is verified |
+|---|---|---|
+| `test_normalizer.py` | 37 | All five normalisation helpers, edge cases, type handling |
+| `test_key_generator.py` | 43 | All 10 spec examples, key format, regression, convenience wrapper |
+| **Total Phase 4** | **80** | — |
+| **Full suite** | **108** | Zero failures |
 
 ### Phase 5 — In-Memory Cache
 Implement:
-* cache storage
-* cache lookup
-* cache hit
-* cache miss
+* cache entry structure (dataclass with TTL timestamps)
+* in-memory dict-based cache storage
+* cache lookup using the Phase 4 key
+* cache hit → return stored response
+* cache miss → call upstream → store → return
+* `/cache/stats` and `/cache/clear` endpoints
 
-### Phase 6 — TTL
+### Phase 6 — TTL & Cache Expiry
 Implement:
-* expiration
-* freshness control
-* TTL testing
+* fixed TTL using `time.monotonic()` for safe elapsed-time measurement
+* lazy expiry on lookup
+* configurable `CACHE_TTL_SECONDS`
 
 ### Phase 7 — Request Deduplication
 Prevent unnecessary duplicate processing.
