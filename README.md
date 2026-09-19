@@ -2,7 +2,7 @@
 
 > Adaptive middleware designed to reduce redundant API traffic, latency, and backend load.
 
-`✅ Status: Phase 4 Complete — Cache-Key Generation`
+`✅ Status: Phase 5 Complete — Basic In-Memory Cache`
 
 ## Project Overview
 
@@ -61,7 +61,7 @@ The project aims to investigate how middleware-level optimization can reduce thi
 | Phase 2 | Mock external API behavior       | ✅ Complete  |
 | Phase 3 | Basic API proxy                  | ✅ Complete  |
 | Phase 4 | Request normalisation & cache-key generation | ✅ Complete  |
-| Phase 5 | In-memory cache                  | ⏳ Next      |
+| Phase 5 | In-memory cache                  | ✅ Complete  |
 | Phase 6 | TTL & cache metrics              | ⏳ Planned   |
 | Phase 7 | Request deduplication            | ⏳ Planned   |
 | Phase 8 | Request coalescing               | ⏳ Planned   |
@@ -69,7 +69,7 @@ The project aims to investigate how middleware-level optimization can reduce thi
 
 ## Current Working Architecture
 
-With Phase 4 complete, the Optimizer normalises every incoming request and generates a deterministic SHA-256 cache key before forwarding to the upstream Mock API. The key is logged on every request and is exposed through a development debug endpoint. Phase 5 will use this key for actual cache lookups.
+With Phase 5 complete, the Optimizer normalises every incoming request, generates a deterministic SHA-256 cache key, and performs an in-memory cache lookup. Cache hits are served instantly; misses are fetched from the upstream Mock API and cached on success. failed responses.
 
 ```text
                      CLIENT
@@ -82,6 +82,8 @@ With Phase 4 complete, the Optimizer normalises every incoming request and gener
               │  (Port 8000)               │
               │                             │
               │  • /health                  │
+              │  • /cache/stats             │
+              │  • /cache/clear             │
               │  • /proxy/data/{id}  ──┐    │
               │  • /debug/cache-key    │    │
               └────────────────────────┼────┘
@@ -89,36 +91,35 @@ With Phase 4 complete, the Optimizer normalises every incoming request and gener
                           ┌────────────▼────────────┐
                           │   Request Normaliser     │
                           │   normalizer.py          │
-                          │                          │
-                          │  normalize_method()      │
-                          │  normalize_path()        │
-                          │  normalize_query_params()│
                           └────────────┬─────────────┘
                                        │
                           ┌────────────▼────────────┐
                           │   Cache-Key Generator    │
                           │   key_generator.py       │
-                          │                          │
-                          │  build_canonical_request │
-                          │  → json.dumps(sort_keys) │
-                          │  → SHA-256 hex digest    │
-                          │  → "api-cache:v1:<hex>" │
                           └────────────┬─────────────┘
-                                       │ key logged
-                                       │ (Phase 5: cache lookup goes here)
+                                       │ api-cache:v1:<hex>
                                        ▼
-              ┌─────────────────────────────┐
-              │   Mock External API         │
-              │   (Port 8001)               │
-              │                             │
-              │  • /health                  │
-              │  • /api/data/{id}           │
-              │  • /stats                   │
-              │  • /stats/reset             │
-              └─────────────┬───────────────┘
-                            │ Response + Headers
-                            ▼
-                         CLIENT
+                          ┌─────────────────────────┐
+                          │     Cache Manager       │
+                          │     manager.py          │
+                          └────────┬────────┬───────┘
+                                   │        │
+                             HIT   │        │   MISS
+                                   │        │
+                                   ▼        ▼
+                              Response  ┌─────────────────────────────┐
+                                        │   Mock External API         │
+                                        │   (Port 8001)               │
+                                        │                             │
+                                        │  • /health                  │
+                                        │  • /api/data/{id}           │
+                                        │  • /stats                   │
+                                        │  • /stats/reset             │
+                                        └─────────────┬───────────────┘
+                                                      │ Response + Headers
+                                                      │ (Cached if 2xx)
+                                                      ▼
+                                                   CLIENT
 ```
 
 > **Note:** The cache key is generated and logged on every request. The proxy still calls the upstream API on every request — cache lookup and storage will be implemented in Phase 5.
@@ -244,14 +245,14 @@ intelligent-api-optimizer/
 │
 ├── app/
 │   ├── __init__.py
-│   ├── main.py                    ← v0.4.0 — logs cache key per request
+│   ├── main.py                    ← v0.5.0 — proxy route cache integration
 │   ├── proxy/
 │   │   ├── __init__.py
 │   │   └── client.py              ← async httpx proxy client (Phase 3)
 │   ├── cache/
 │   │   ├── __init__.py
-│   │   ├── entry.py               ← stub (Phase 5)
-│   │   └── manager.py             ← stub (Phase 5)
+│   │   ├── entry.py               ← ✅ Phase 5: CacheEntry dataclass
+│   │   └── manager.py             ← ✅ Phase 5: CacheManager in-memory store
 │   ├── requests/
 │   │   ├── __init__.py
 │   │   ├── normalizer.py          ← ✅ Phase 3/4: normalize method/path/params/headers/body
@@ -274,7 +275,7 @@ intelligent-api-optimizer/
 │   ├── test_proxy.py              ← Phase 3 tests
 │   ├── test_normalizer.py         ← ✅ Phase 4: normalizer unit tests
 │   ├── test_key_generator.py      ← ✅ Phase 4: key-generation tests (10 spec examples)
-│   ├── test_cache.py              ← stub (Phase 5)
+│   ├── test_cache.py              ← ✅ Phase 5: 27 cache entry, manager, and proxy-integration tests
 │   └── test_optimizer.py          ← import smoke test
 │
 ├── requirements.txt
@@ -339,9 +340,16 @@ uvicorn app.main:app --port 8000 --reload
   GET /proxy/data/{resource_id}
   GET /proxy/data/{resource_id}?city=Delhi&units=metric
   ```
-  Transparently forwards request to upstream Mock API. Generates and logs a SHA-256 cache key on every request (Phase 4). Forwards query parameters and returns upstream JSON payload.
+  Transparently forwards request to upstream Mock API. Looks up cache key in the `CacheManager` first (Phase 5). On Cache Miss, requests upstream and caches successful (2xx) responses. Adds `X-Cache: HIT` or `X-Cache: MISS` header to response.
   - Connection failures to upstream return HTTP `502 Bad Gateway` (`{"error": "Upstream API unavailable"}`).
   - Upstream request timeouts return HTTP `504 Gateway Timeout` (`{"error": "Upstream API timeout"}`).
+
+* **Cache Endpoints** *(Phase 5)*:
+  ```text
+  GET /cache/stats
+  POST /cache/clear
+  ```
+  Check hit ratio and live entry count, or flush all entries cleanly.
 
 * **Cache-Key Debug Endpoint** *(Phase 4 — development only)*:
   ```text
@@ -408,7 +416,7 @@ Configurable via environment variables or `.env`:
 python -m pytest tests/ -v
 ```
 
-Current result: **108 tests, 0 failures.**
+Current result: **135 tests, 0 failures.**
 
 ### Run tests by phase
 
@@ -424,6 +432,9 @@ python -m pytest tests/test_normalizer.py -v
 
 # Phase 4 — Cache-key generator tests
 python -m pytest tests/test_key_generator.py -v
+
+# Phase 5 — Basic In-Memory Cache tests
+python -m pytest tests/test_cache.py -v
 ```
 
 ### What the test suite validates
@@ -467,7 +478,16 @@ python -m pytest tests/test_key_generator.py -v
 * Authorization never included in key
 * Key format: `api-cache:v1:<64-char SHA-256 hex>`
 * Key contains no raw path or param values
-* Regression: Phase 1–3 imports unaffected
+**Phase 5 — Basic In-Memory Cache** (`test_cache.py`)
+* `CacheEntry` dataclass instantiation and expiration (`is_expired()`) logic with mocked time
+* `CacheManager` unit tests: get/set/delete/exists/clear flow
+* `CacheManager` TTL correctness: entry naturally expires and is deleted on access
+* `CacheManager` statistics calculations (total requests, hits, misses, hit ratio)
+* Zero-division avoidance logic for hit ratio
+* Proxy integration: First request results in `X-Cache: MISS` + upstream call
+* Proxy integration: Second request results in `X-Cache: HIT` + no upstream call
+* Proxy integration: Upstream 5xx errors are verified to bypass caching
+* Observability endpoints: `/cache/stats` and `/cache/clear` correctness
 
 ## Development Roadmap
 

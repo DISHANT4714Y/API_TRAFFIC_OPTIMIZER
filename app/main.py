@@ -5,10 +5,17 @@ Exposes proxy endpoints to transparently route incoming client requests
 to upstream APIs while tracking performance and establishing baseline metrics.
 
 Phase 4 addition:
-    Cache-key generation is now integrated into the proxy route.
-    Every incoming GET request produces a deterministic SHA-256 cache key,
-    which is logged for debugging. Phase 5 will use this key for actual
-    cache lookups.
+    Cache-key generation is integrated into the proxy route. Every incoming
+    GET request produces a deterministic SHA-256 cache key.
+
+Phase 5 addition:
+    In-memory cache lookup is now performed before calling the upstream API.
+    - CACHE HIT  → return cached response immediately (no upstream call).
+    - CACHE MISS → call upstream, store 2xx responses, return response.
+    Failed upstream responses (4xx/5xx) are never stored in the cache.
+    Two new endpoints expose cache observability and control:
+        GET  /cache/stats  — hit/miss statistics
+        POST /cache/clear  — flush all cached entries (useful for testing)
 """
 
 import logging
@@ -18,6 +25,7 @@ from typing import Any, Dict
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
+from app.cache.manager import CacheManager
 from app.proxy.client import (
     ProxyClient,
     UpstreamError,
@@ -36,18 +44,62 @@ logger = logging.getLogger("optimizer")
 app = FastAPI(
     title="API Traffic Optimizer Prototype",
     description="Intelligent API Traffic Optimizer acting as an adaptive middleware proxy.",
-    version="0.4.0",  # Phase 4: Cache-Key Generation
+    version="0.5.0",  # Phase 5: Basic In-Memory Cache
 )
 
-# Global proxy client instance
+# Module-level singletons — replaced in tests via patch.object
 proxy_client = ProxyClient()
+cache_manager = CacheManager()
 
+
+# ---------------------------------------------------------------------------
+# System
+# ---------------------------------------------------------------------------
 
 @app.get("/health", summary="Health Check", tags=["System"])
 async def health() -> Dict[str, str]:
     """Returns the operational status of the optimizer."""
     return {"status": "ok"}
 
+
+# ---------------------------------------------------------------------------
+# Cache Observability & Control
+# ---------------------------------------------------------------------------
+
+@app.get(
+    "/cache/stats",
+    summary="Cache Statistics",
+    tags=["Cache"],
+)
+async def cache_stats() -> Dict[str, Any]:
+    """
+    Returns current in-memory cache statistics.
+
+    Includes total get() calls, hits, misses, hit ratio, and number
+    of entries currently stored.
+    """
+    return cache_manager.get_stats()
+
+
+@app.post(
+    "/cache/clear",
+    summary="Clear Cache",
+    tags=["Cache"],
+)
+async def cache_clear() -> Dict[str, Any]:
+    """
+    Flushes all entries from the in-memory cache.
+
+    Useful for benchmark resets and integration testing.
+    Does NOT reset hit/miss statistics.
+    """
+    cleared = cache_manager.clear()
+    return {"status": "cleared", "entries_removed": cleared}
+
+
+# ---------------------------------------------------------------------------
+# Debug (Phase 4 — development only)
+# ---------------------------------------------------------------------------
 
 @app.get(
     "/debug/cache-key",
@@ -62,14 +114,11 @@ async def debug_cache_key(
     Development-only endpoint that returns the cache key that would be
     generated for a given resource_id and query parameters.
 
-    This endpoint exists purely for Phase 4 demonstration purposes.
-    Remove or restrict access to this endpoint before production deployment
-    because it reveals internal cache-key structure.
+    Remove or restrict access to this endpoint before production deployment.
 
     Example:
         GET /debug/cache-key?resource_id=weather&city=Delhi&units=metric
     """
-    # Collect all query params except 'resource_id' (which is our own param)
     extra_params = {
         k: v for k, v in request.query_params.items() if k != "resource_id"
     }
@@ -85,6 +134,10 @@ async def debug_cache_key(
     }
 
 
+# ---------------------------------------------------------------------------
+# Proxy
+# ---------------------------------------------------------------------------
+
 @app.get(
     "/proxy/data/{resource_id}",
     summary="Proxy Resource Request",
@@ -96,26 +149,37 @@ async def proxy_data(
     response: Response,
 ) -> Any:
     """
-    Transparently forwards a resource request to the upstream Mock API.
+    Transparently forwards a resource request to the upstream Mock API
+    with an in-memory cache layer (Phase 5).
 
-    - Preserves and forwards query parameters.
-    - Preserves upstream status codes and response headers.
-    - Handles timeouts (504 Gateway Timeout) and connection failures (502 Bad Gateway).
+    Flow:
+        1. Generate deterministic cache key from resource_id + query params.
+        2. Check cache:
+           - HIT  → return cached payload immediately (no upstream call).
+           - MISS → continue to upstream.
+        3. Call upstream Mock API.
+        4. On success (2xx): store response in cache, then return.
+        5. On error (4xx/5xx / timeout / unavailable): return error, do not cache.
     """
     query_params = dict(request.query_params)
-    target_url = f"{proxy_client.base_url}/api/data/{resource_id}"
 
-    # --- Phase 4: Generate cache key for this request ---
-    # The key is deterministic: identical logical requests always produce the
-    # same key regardless of query-parameter ordering.
-    # Phase 5 will use this key to check the in-memory cache before calling
-    # the upstream API. For now, we log it and move on.
+    # --- Phase 4 + 5: Generate deterministic cache key ---
     cache_key = generate_key_from_request(
         resource_id=resource_id,
         query_params=query_params if query_params else None,
     )
     logger.info("[OPTIMIZER] Incoming request: GET /proxy/data/%s", resource_id)
-    logger.info("[OPTIMIZER] Cache key (Phase 4): %s", cache_key)
+    logger.info("[OPTIMIZER] Cache key: %s", cache_key)
+
+    # --- Phase 5: Cache lookup ---
+    cached_value = cache_manager.get(cache_key)
+    if cached_value is not None:
+        # Cache HIT — serve without calling upstream
+        response.headers["X-Cache"] = "HIT"
+        return cached_value
+
+    # Cache MISS — call upstream
+    target_url = f"{proxy_client.base_url}/api/data/{resource_id}"
     logger.info("[OPTIMIZER] Forwarding request to: %s", target_url)
 
     start_time = time.perf_counter()
@@ -137,6 +201,11 @@ async def proxy_data(
             if header_key in upstream_headers:
                 response.headers[header_key] = upstream_headers[header_key]
 
+        # --- Phase 5: Cache successful responses only ---
+        if 200 <= status_code < 300:
+            cache_manager.set(cache_key, data)
+
+        response.headers["X-Cache"] = "MISS"
         return data
 
     except UpstreamError as err:
@@ -146,6 +215,7 @@ async def proxy_data(
             err.status_code,
             elapsed_ms,
         )
+        # Do NOT cache error responses
         return JSONResponse(status_code=err.status_code, content=err.detail)
 
     except UpstreamTimeoutError:
