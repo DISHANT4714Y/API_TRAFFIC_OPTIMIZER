@@ -384,3 +384,55 @@ class TestProxyCacheIntegration:
         # Cache must now be empty
         stats = client.get("/cache/stats").json()
         assert stats["current_entries"] == 0
+
+    def test_cache_reset_endpoint(self):
+        """POST /cache/reset flushes entries AND resets hit/miss/total stats."""
+        mock_payload = {"resource_id": "reset-test", "data": {}, "served_at": "", "request_id": "x"}
+        with patch.object(
+            app_module.proxy_client,
+            "fetch_resource",
+            new=AsyncMock(return_value=(200, mock_payload, {})),
+        ):
+            client.get("/proxy/data/reset-test-a")  # MISS
+            client.get("/proxy/data/reset-test-a")  # HIT
+
+        # Confirm stats are recorded before reset
+        stats_before = client.get("/cache/stats").json()
+        assert stats_before["total_requests"] == 2
+        assert stats_before["hits"] == 1
+        assert stats_before["misses"] == 1
+
+        reset_resp = client.post("/cache/reset")
+        assert reset_resp.status_code == 200
+        body = reset_resp.json()
+        assert body["status"] == "reset"
+        assert body["entries_removed"] == 1
+
+        # Cache store AND stats counters must now be reset to 0
+        stats_after = client.get("/cache/stats").json()
+        assert stats_after["total_requests"] == 0
+        assert stats_after["hits"] == 0
+        assert stats_after["misses"] == 0
+        assert stats_after["current_entries"] == 0
+
+    def test_cors_headers_configured(self):
+        """CORS headers must allow frontend origin and expose X-Cache header."""
+        options_resp = client.options(
+            "/proxy/data/test",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert options_resp.status_code == 200
+        assert options_resp.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+        get_resp = client.get(
+            "/health",
+            headers={"Origin": "http://localhost:5173"},
+        )
+        assert get_resp.status_code == 200
+        assert get_resp.headers.get("access-control-allow-origin") == "http://localhost:5173"
+        expose_headers = get_resp.headers.get("access-control-expose-headers", "").lower()
+        assert "x-cache" in expose_headers
+

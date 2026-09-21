@@ -23,6 +23,7 @@ import time
 from typing import Any, Dict
 
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.cache.manager import CacheManager
@@ -45,6 +46,16 @@ app = FastAPI(
     title="API Traffic Optimizer Prototype",
     description="Intelligent API Traffic Optimizer acting as an adaptive middleware proxy.",
     version="0.5.0",  # Phase 5: Basic In-Memory Cache
+)
+
+# Enable CORS for frontend observability dashboard
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-Cache", "x-request-id", "x-mock-delay-ms"],
 )
 
 # Module-level singletons — replaced in tests via patch.object
@@ -95,6 +106,22 @@ async def cache_clear() -> Dict[str, Any]:
     """
     cleared = cache_manager.clear()
     return {"status": "cleared", "entries_removed": cleared}
+
+
+@app.post(
+    "/cache/reset",
+    summary="Reset Cache and Statistics",
+    tags=["Cache"],
+)
+async def cache_reset() -> Dict[str, Any]:
+    """
+    Flushes all entries from the in-memory cache and resets hit/miss statistics.
+
+    Useful for benchmark resets and interactive demonstration runs.
+    """
+    cleared = cache_manager.clear()
+    cache_manager.reset_stats()
+    return {"status": "reset", "entries_removed": cleared}
 
 
 # ---------------------------------------------------------------------------

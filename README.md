@@ -69,60 +69,102 @@ The project aims to investigate how middleware-level optimization can reduce thi
 
 ## Current Working Architecture
 
-With Phase 5 complete, the Optimizer normalises every incoming request, generates a deterministic SHA-256 cache key, and performs an in-memory cache lookup. Cache hits are served instantly; misses are fetched from the upstream Mock API and cached on success. failed responses.
+With Phase 5 complete, the Optimizer normalises every incoming request, generates a deterministic SHA-256 cache key, and performs an in-memory cache lookup. Cache hits are served instantly; misses are fetched from the upstream Mock API and cached on success. An interactive developer dashboard provides observability and real-time demonstration capabilities.
 
 ```text
-                     CLIENT
-                        │
-                        │ HTTP Request (GET /proxy/data/{id}?...)
-                        ▼
-              ┌─────────────────────────────┐
-              │  Intelligent API            │
-              │  Traffic Optimizer          │
-              │  (Port 8000)               │
-              │                             │
-              │  • /health                  │
-              │  • /cache/stats             │
-              │  • /cache/clear             │
-              │  • /proxy/data/{id}  ──┐    │
-              │  • /debug/cache-key    │    │
-              └────────────────────────┼────┘
-                                       │
-                          ┌────────────▼────────────┐
-                          │   Request Normaliser     │
-                          │   normalizer.py          │
-                          └────────────┬─────────────┘
-                                       │
-                          ┌────────────▼────────────┐
-                          │   Cache-Key Generator    │
-                          │   key_generator.py       │
-                          └────────────┬─────────────┘
-                                       │ api-cache:v1:<hex>
-                                       ▼
-                          ┌─────────────────────────┐
-                          │     Cache Manager       │
-                          │     manager.py          │
-                          └────────┬────────┬───────┘
-                                   │        │
-                             HIT   │        │   MISS
-                                   │        │
-                                   ▼        ▼
-                              Response  ┌─────────────────────────────┐
-                                        │   Mock External API         │
-                                        │   (Port 8001)               │
-                                        │                             │
-                                        │  • /health                  │
-                                        │  • /api/data/{id}           │
-                                        │  • /stats                   │
-                                        │  • /stats/reset             │
-                                        └─────────────┬───────────────┘
-                                                      │ Response + Headers
-                                                      │ (Cached if 2xx)
-                                                      ▼
-                                                   CLIENT
+                     CLIENT / BROWSER
+                            │
+                            ▼
+               ┌─────────────────────────────┐
+               │   Observability Dashboard   │
+               │   (React / Vite, Port 5173) │
+               └────────────┬────────────────┘
+                            │
+                            │ HTTP Request (GET /proxy/data/{id}?...)
+                            ▼
+               ┌─────────────────────────────┐
+               │  Intelligent API            │
+               │  Traffic Optimizer          │
+               │  (Port 8000)                │
+               │                             │
+               │  • /health                  │
+               │  • /cache/stats             │
+               │  • /cache/clear             │
+               │  • /cache/reset             │
+               │  • /proxy/data/{id}  ──┐    │
+               │  • /debug/cache-key    │    │
+               └────────────────────────┼────┘
+                                        │
+                           ┌────────────▼────────────┐
+                           │   Request Normaliser     │
+                           │   normalizer.py          │
+                           └────────────┬─────────────┘
+                                        │
+                           ┌────────────▼────────────┐
+                           │   Cache-Key Generator    │
+                           │   key_generator.py       │
+                           └────────────┬─────────────┘
+                                        │ api-cache:v1:<hex>
+                                        ▼
+                           ┌─────────────────────────┐
+                           │     Cache Manager       │
+                           │     manager.py          │
+                           └────────┬────────┬───────┘
+                                    │        │
+                              HIT   │        │   MISS
+                                    │        │
+                                    ▼        ▼
+                               Response  ┌─────────────────────────────┐
+                                         │   Mock External API         │
+                                         │   (Port 8001)               │
+                                         │                             │
+                                         │  • /health                  │
+                                         │  • /api/data/{id}           │
+                                         │  • /stats                   │
+                                         │  • /stats/reset             │
+                                         └─────────────┬───────────────┘
+                                                       │ Response + Headers
+                                                       │ (Cached if 2xx)
+                                                       ▼
+                                                    CLIENT
 ```
 
-> **Note:** The cache key is generated and logged on every request. The proxy still calls the upstream API on every request — cache lookup and storage will be implemented in Phase 5.
+## Prototype Dashboard
+
+A lightweight monitoring dashboard provides visibility into request traffic, cache behavior, API calls, latency, and system health. The dashboard communicates directly with the FastAPI optimizer and is intended primarily for experimentation and demonstration.
+
+### Key Capabilities
+- **System Health Observability**: Real-time status indicator (`● SYSTEM ONLINE` in green / `● SYSTEM OFFLINE` in red) via `GET /health`.
+- **Live KPI Tracking**: Displays Total Requests, Cache Hits, Cache Misses, and External API Calls queried directly from `GET /cache/stats`.
+- **Optimization Impact**: Real-time computation of **API Call Reduction (%)** and **Cache Hit Ratio (%)**.
+- **Visual Request Pipeline**: Dynamic request flow diagram highlighting the exact path taken:
+  - Cache Hit: Client → Optimizer → Normalizer → Cache → Instant Response
+  - Cache Miss: Client → Optimizer → Normalizer → Cache → Mock API → Cache
+- **Interactive Request Simulator**: Allows entering resource IDs (e.g., `weather-ahmedabad`) and sending live requests through the optimizer to observe status, headers (`X-Cache: HIT` vs `MISS`), and latency differences (e.g., 2ms vs 500ms).
+- **Performance Chart**: Visual comparison of Cache Hits vs Cache Misses.
+- **Recent Requests Log**: In-memory session table capturing the last 15–20 requests with timestamps, HTTP statuses, and latencies.
+- **Experiment Reset**: Confirmation-backed reset that flushes in-memory cache and clears hit/miss statistics for fresh benchmark demonstrations.
+
+### Running the System with Dashboard
+
+**Terminal 1 — Mock External API**:
+```bash
+uvicorn mock_api.main:app --port 8001 --reload
+```
+
+**Terminal 2 — API Traffic Optimizer**:
+```bash
+uvicorn app.main:app --port 8000 --reload
+```
+
+**Terminal 3 — Frontend Dashboard**:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173` in your browser.
 
 ## Target Prototype Architecture
 
