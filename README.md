@@ -2,7 +2,7 @@
 
 > Adaptive middleware designed to reduce redundant API traffic, latency, and backend load.
 
-`✅ Status: Phase 5 Complete — Basic In-Memory Cache`
+`✅ Status: Phase 9 Complete — Tests & Benchmarking`
 
 ## Project Overview
 
@@ -62,14 +62,14 @@ The project aims to investigate how middleware-level optimization can reduce thi
 | Phase 3 | Basic API proxy                  | ✅ Complete  |
 | Phase 4 | Request normalisation & cache-key generation | ✅ Complete  |
 | Phase 5 | In-memory cache                  | ✅ Complete  |
-| Phase 6 | TTL & cache metrics              | ⏳ Planned   |
-| Phase 7 | Request deduplication            | ⏳ Planned   |
-| Phase 8 | Request coalescing               | ⏳ Planned   |
-| Phase 9 | Metrics & benchmarking           | ⏳ Planned   |
+| Phase 6 | TTL cache management             | ✅ Complete  |
+| Phase 7 | Metrics & monitoring             | ✅ Complete  |
+| Phase 8 | Request coalescing               | ✅ Complete  |
+| Phase 9 | Tests & benchmarking             | ✅ Complete  |
 
 ## Current Working Architecture
 
-With Phase 5 complete, the Optimizer normalises every incoming request, generates a deterministic SHA-256 cache key, and performs an in-memory cache lookup. Cache hits are served instantly; misses are fetched from the upstream Mock API and cached on success. An interactive developer dashboard provides observability and real-time demonstration capabilities.
+With Phase 9 complete, the Optimizer normalises every incoming request, generates a deterministic SHA-256 cache key, performs an in-memory TTL cache lookup, coalesces concurrent identical requests into a single upstream call, and tracks comprehensive performance metrics. An interactive developer dashboard provides observability and real-time demonstration capabilities.
 
 ```text
                      CLIENT / BROWSER
@@ -287,22 +287,22 @@ intelligent-api-optimizer/
 │
 ├── app/
 │   ├── __init__.py
-│   ├── main.py                    ← v0.5.0 — proxy route cache integration
+│   ├── main.py                    ← v0.9.0 — metrics + coalescer integrated
 │   ├── proxy/
 │   │   ├── __init__.py
 │   │   └── client.py              ← async httpx proxy client (Phase 3)
 │   ├── cache/
 │   │   ├── __init__.py
-│   │   ├── entry.py               ← ✅ Phase 5: CacheEntry dataclass
-│   │   └── manager.py             ← ✅ Phase 5: CacheManager in-memory store
+│   │   ├── entry.py               ← ✅ Phase 5/6: CacheEntry with TTL expiry
+│   │   └── manager.py             ← ✅ Phase 5/6: CacheManager + TTL + stats
 │   ├── requests/
 │   │   ├── __init__.py
-│   │   ├── normalizer.py          ← ✅ Phase 3/4: normalize method/path/params/headers/body
+│   │   ├── normalizer.py          ← ✅ Phase 4: normalize method/path/params/headers/body
 │   │   ├── key_generator.py       ← ✅ Phase 4: SHA-256 cache-key generation pipeline
-│   │   └── coalescer.py           ← stub (Phase 8)
+│   │   └── coalescer.py           ← ✅ Phase 8: RequestCoalescer (asyncio.Future)
 │   └── metrics/
 │       ├── __init__.py
-│       └── collector.py           ← stub (Phase 9)
+│       └── collector.py           ← ✅ Phase 7: MetricsCollector
 │
 ├── mock_api/
 │   ├── __init__.py
@@ -315,11 +315,15 @@ intelligent-api-optimizer/
 │   ├── __init__.py
 │   ├── test_mock_api.py           ← Phase 2 tests
 │   ├── test_proxy.py              ← Phase 3 tests
-│   ├── test_normalizer.py         ← ✅ Phase 4: normalizer unit tests
-│   ├── test_key_generator.py      ← ✅ Phase 4: key-generation tests (10 spec examples)
-│   ├── test_cache.py              ← ✅ Phase 5: 27 cache entry, manager, and proxy-integration tests
+│   ├── test_normalizer.py         ← Phase 4: normalizer unit tests
+│   ├── test_key_generator.py      ← Phase 4: key-generation tests
+│   ├── test_cache.py              ← Phase 5/6: cache + TTL expiry integration tests
+│   ├── test_metrics.py            ← ✅ Phase 7: MetricsCollector unit + integration tests
+│   ├── test_coalescer.py          ← ✅ Phase 8: RequestCoalescer async unit + integration
 │   └── test_optimizer.py          ← import smoke test
 │
+├── benchmark.py                   ← ✅ Phase 9: benchmark script
+├── pytest.ini                     ← asyncio_mode = auto
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
@@ -386,12 +390,32 @@ uvicorn app.main:app --port 8000 --reload
   - Connection failures to upstream return HTTP `502 Bad Gateway` (`{"error": "Upstream API unavailable"}`).
   - Upstream request timeouts return HTTP `504 Gateway Timeout` (`{"error": "Upstream API timeout"}`).
 
-* **Cache Endpoints** *(Phase 5)*:
+* **Cache Endpoints** *(Phase 5/6)*:
   ```text
-  GET /cache/stats
+  GET  /cache/stats
   POST /cache/clear
+  POST /cache/reset
   ```
-  Check hit ratio and live entry count, or flush all entries cleanly.
+  Check hit ratio and live entry count, flush entries, or reset entries + stats together.
+
+* **Metrics Endpoint** *(Phase 7)*:
+  ```text
+  GET  /metrics
+  POST /metrics/reset
+  ```
+  `GET /metrics` returns a JSON snapshot of optimizer performance:
+  ```json
+  {
+    "total_requests": 50,
+    "cache_hits": 49,
+    "cache_misses": 1,
+    "cache_hit_ratio": 0.98,
+    "mock_api_calls": 1,
+    "requests_saved": 49,
+    "avg_response_time_ms": 1.23
+  }
+  ```
+  `POST /metrics/reset` zeroes all counters without affecting the cache.
 
 * **Cache-Key Debug Endpoint** *(Phase 4 — development only)*:
   ```text
@@ -455,29 +479,76 @@ Configurable via environment variables or `.env`:
 ### Run the full test suite
 
 ```powershell
-python -m pytest tests/ -v
+.venv\Scripts\python.exe -m pytest tests/ -v
 ```
 
-Current result: **135 tests, 0 failures.**
+Current result: **166 tests, 0 failures.**
 
 ### Run tests by phase
 
 ```powershell
-# Phase 2 — Mock API tests
+# Phase 2 — Mock API
 python -m pytest tests/test_mock_api.py -v
 
-# Phase 3 — Proxy tests
+# Phase 3 — Proxy
 python -m pytest tests/test_proxy.py -v
 
-# Phase 4 — Normaliser tests
-python -m pytest tests/test_normalizer.py -v
+# Phase 4 — Normaliser & key generator
+python -m pytest tests/test_normalizer.py tests/test_key_generator.py -v
 
-# Phase 4 — Cache-key generator tests
-python -m pytest tests/test_key_generator.py -v
-
-# Phase 5 — Basic In-Memory Cache tests
+# Phase 5/6 — Cache + TTL expiry
 python -m pytest tests/test_cache.py -v
+
+# Phase 7 — Metrics
+python -m pytest tests/test_metrics.py -v
+
+# Phase 8 — Request Coalescer
+python -m pytest tests/test_coalescer.py -v
 ```
+
+## Benchmarking
+
+The `benchmark.py` script compares two scenarios over 50 requests with concurrency of 10:
+- **Scenario A**: Direct calls to the Mock API
+- **Scenario B**: Calls through the Optimizer proxy (cache populated after 1st request)
+
+### Prerequisites
+
+Both services must be running (see _Running the Services_ above).
+
+### Run the benchmark
+
+```powershell
+.venv\Scripts\python.exe benchmark.py
+```
+
+### Sample benchmark output
+
+```text
+Benchmark config: 50 requests, concurrency=10
+Resource: benchmark-resource
+
+Resetting Optimizer cache and metrics ...
+[A] Sending 50 requests directly to Mock API ...
+[B] Sending 50 requests through Optimizer ...
+
+==============================================================
+  API Traffic Optimizer -- Phase 9 Benchmark Results
+==============================================================
+  Metric                         Direct Mock API    Via Optimizer
+  ------------------------------------------------------------
+  Total Requests                          50                50
+  Elapsed Time (s)                    5.041s             2.214s
+  Avg Latency (ms)                  500.83ms           220.27ms
+  Mock API Calls                          50                 1
+  Cache Hit Ratio                        N/A            98.00%
+  Requests Saved                         N/A                49
+  ------------------------------------------------------------
+  Optimizer avg latency speedup:  2.27x
+==============================================================
+```
+
+> **Key findings**: The Optimizer serves 49 of 50 requests from cache, reducing upstream Mock API calls from 50 to 1 and cutting average latency by ~2.3x.
 
 ### What the test suite validates
 

@@ -16,6 +16,18 @@ Phase 5 addition:
     Two new endpoints expose cache observability and control:
         GET  /cache/stats  — hit/miss statistics
         POST /cache/clear  — flush all cached entries (useful for testing)
+
+Phase 7 addition:
+    A MetricsCollector tracks total requests, cache hits/misses, Mock API
+    calls, average response time, and requests saved by caching.
+    Exposed via:
+        GET /metrics  — full metrics snapshot as JSON
+
+Phase 8 addition:
+    A RequestCoalescer deduplicates simultaneous identical upstream calls.
+    When multiple concurrent requests share the same cache key and the cache
+    is empty, only one upstream fetch is made; all waiters receive the same
+    result.
 """
 
 import logging
@@ -27,12 +39,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.cache.manager import CacheManager
+from app.metrics.collector import MetricsCollector
 from app.proxy.client import (
     ProxyClient,
     UpstreamError,
     UpstreamTimeoutError,
     UpstreamUnavailableError,
 )
+from app.requests.coalescer import RequestCoalescer
 from app.requests.key_generator import generate_key_from_request
 
 # Configure logging
@@ -45,7 +59,7 @@ logger = logging.getLogger("optimizer")
 app = FastAPI(
     title="API Traffic Optimizer Prototype",
     description="Intelligent API Traffic Optimizer acting as an adaptive middleware proxy.",
-    version="0.5.0",  # Phase 5: Basic In-Memory Cache
+    version="0.9.0",  # Phase 9: Tests and Benchmarking
 )
 
 # Enable CORS for frontend observability dashboard
@@ -61,6 +75,8 @@ app.add_middleware(
 # Module-level singletons — replaced in tests via patch.object
 proxy_client = ProxyClient()
 cache_manager = CacheManager()
+metrics_collector = MetricsCollector()
+request_coalescer = RequestCoalescer()
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +141,42 @@ async def cache_reset() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Metrics (Phase 7)
+# ---------------------------------------------------------------------------
+
+@app.get(
+    "/metrics",
+    summary="Performance Metrics",
+    tags=["Metrics"],
+)
+async def get_metrics() -> Dict[str, Any]:
+    """
+    Returns a snapshot of optimizer performance metrics.
+
+    Fields:
+        total_requests       — requests received since last reset
+        cache_hits           — responses served from cache
+        cache_misses         — cache lookups that resulted in upstream calls
+        cache_hit_ratio      — hits / total_requests (0.0–1.0)
+        mock_api_calls       — actual upstream (Mock API) fetches performed
+        requests_saved       — upstream calls avoided due to cache hits
+        avg_response_time_ms — mean latency across all requests (ms)
+    """
+    return metrics_collector.get_metrics()
+
+
+@app.post(
+    "/metrics/reset",
+    summary="Reset Performance Metrics",
+    tags=["Metrics"],
+)
+async def reset_metrics() -> Dict[str, Any]:
+    """Resets all performance metric counters to zero."""
+    metrics_collector.reset()
+    return {"status": "reset"}
+
+
+# ---------------------------------------------------------------------------
 # Debug (Phase 4 — development only)
 # ---------------------------------------------------------------------------
 
@@ -177,15 +229,15 @@ async def proxy_data(
 ) -> Any:
     """
     Transparently forwards a resource request to the upstream Mock API
-    with an in-memory cache layer (Phase 5).
+    with an in-memory cache layer (Phase 5) and request coalescing (Phase 8).
 
     Flow:
         1. Generate deterministic cache key from resource_id + query params.
         2. Check cache:
-           - HIT  → return cached payload immediately (no upstream call).
-           - MISS → continue to upstream.
-        3. Call upstream Mock API.
-        4. On success (2xx): store response in cache, then return.
+           - HIT  → record metrics, return cached payload immediately.
+           - MISS → continue to upstream (with coalescing).
+        3. Coalescer ensures only one upstream call per unique key at a time.
+        4. On success (2xx): store response in cache, record metrics, return.
         5. On error (4xx/5xx / timeout / unavailable): return error, do not cache.
     """
     query_params = dict(request.query_params)
@@ -198,25 +250,32 @@ async def proxy_data(
     logger.info("[OPTIMIZER] Incoming request: GET /proxy/data/%s", resource_id)
     logger.info("[OPTIMIZER] Cache key: %s", cache_key)
 
+    request_start = time.perf_counter()
+
     # --- Phase 5: Cache lookup ---
     cached_value = cache_manager.get(cache_key)
     if cached_value is not None:
         # Cache HIT — serve without calling upstream
+        elapsed_ms = round((time.perf_counter() - request_start) * 1000, 2)
+        metrics_collector.record_request(hit=True, response_time_ms=elapsed_ms)
         response.headers["X-Cache"] = "HIT"
         return cached_value
 
-    # Cache MISS — call upstream
+    # Cache MISS — call upstream via coalescer (Phase 8)
     target_url = f"{proxy_client.base_url}/api/data/{resource_id}"
     logger.info("[OPTIMIZER] Forwarding request to: %s", target_url)
 
-    start_time = time.perf_counter()
+    upstream_start = time.perf_counter()
 
     try:
-        status_code, data, upstream_headers = await proxy_client.fetch_resource(
-            resource_id=resource_id,
-            params=query_params if query_params else None,
+        status_code, data, upstream_headers = await request_coalescer.coalesce(
+            key=cache_key,
+            coro_factory=lambda: proxy_client.fetch_resource(
+                resource_id=resource_id,
+                params=query_params if query_params else None,
+            ),
         )
-        elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        elapsed_ms = round((time.perf_counter() - upstream_start) * 1000, 2)
         logger.info(
             "[OPTIMIZER] Upstream response: %s (%s ms)",
             status_code,
@@ -232,30 +291,41 @@ async def proxy_data(
         if 200 <= status_code < 300:
             cache_manager.set(cache_key, data)
 
+        total_elapsed_ms = round((time.perf_counter() - request_start) * 1000, 2)
+        # Phase 7: record metrics — MISS path
+        metrics_collector.record_request(hit=False, response_time_ms=total_elapsed_ms)
+        metrics_collector.record_mock_api_call()
+
         response.headers["X-Cache"] = "MISS"
         return data
 
     except UpstreamError as err:
-        elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        elapsed_ms = round((time.perf_counter() - request_start) * 1000, 2)
         logger.warning(
             "[OPTIMIZER] Upstream returned error %s (%s ms)",
             err.status_code,
             elapsed_ms,
         )
+        metrics_collector.record_request(hit=False, response_time_ms=elapsed_ms)
+        metrics_collector.record_mock_api_call()
         # Do NOT cache error responses
         return JSONResponse(status_code=err.status_code, content=err.detail)
 
     except UpstreamTimeoutError:
-        elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        elapsed_ms = round((time.perf_counter() - request_start) * 1000, 2)
         logger.error("[OPTIMIZER] Upstream request timed out (%s ms)", elapsed_ms)
+        metrics_collector.record_request(hit=False, response_time_ms=elapsed_ms)
+        metrics_collector.record_mock_api_call()
         return JSONResponse(
             status_code=504,
             content={"error": "Upstream API timeout"},
         )
 
     except UpstreamUnavailableError:
-        elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        elapsed_ms = round((time.perf_counter() - request_start) * 1000, 2)
         logger.error("[OPTIMIZER] Upstream API unavailable (%s ms)", elapsed_ms)
+        metrics_collector.record_request(hit=False, response_time_ms=elapsed_ms)
+        metrics_collector.record_mock_api_call()
         return JSONResponse(
             status_code=502,
             content={"error": "Upstream API unavailable"},

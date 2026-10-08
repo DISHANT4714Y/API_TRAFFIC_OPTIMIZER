@@ -436,3 +436,41 @@ class TestProxyCacheIntegration:
         expose_headers = get_resp.headers.get("access-control-expose-headers", "").lower()
         assert "x-cache" in expose_headers
 
+    def test_expired_cache_entry_triggers_new_api_call(self):
+        """
+        Phase 6 verification: after a cache entry's TTL has elapsed, the
+        proxy must NOT serve the stale entry — it must call the upstream again.
+
+        We patch `app.cache.entry.time.time` to simulate the clock advancing
+        past the entry's expiry time between the first and second request.
+        """
+        import time as real_time
+
+        mock_payload = {
+            "resource_id": "ttl-expiry-test",
+            "data": {"value": 1},
+            "served_at": "2026-10-09T00:00:00Z",
+            "request_id": "mock-ttl-001",
+        }
+
+        with patch.object(
+            app_module.proxy_client,
+            "fetch_resource",
+            new=AsyncMock(return_value=(200, mock_payload, {})),
+        ) as mock_fetch:
+            # First request — MISS, populates cache
+            r1 = client.get("/proxy/data/ttl-expiry-test")
+            assert r1.headers.get("x-cache") == "MISS"
+            assert mock_fetch.await_count == 1
+
+            # Simulate time advancing 60 s past the cache entry's expiry
+            future_time = real_time.time() + 60.0
+            with patch("app.cache.entry.time") as mock_time:
+                mock_time.time.return_value = future_time
+                # Second request — entry is expired; should be a MISS
+                r2 = client.get("/proxy/data/ttl-expiry-test")
+
+            assert r2.headers.get("x-cache") == "MISS"
+            # Upstream must have been called a second time
+            assert mock_fetch.await_count == 2
+
