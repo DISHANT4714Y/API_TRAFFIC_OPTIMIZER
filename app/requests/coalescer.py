@@ -71,7 +71,7 @@ class RequestCoalescer:
                 is_leader = False
             else:
                 # We are the leader — create a Future that waiters will await
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 future = loop.create_future()
                 self._in_flight[key] = future
                 is_leader = True
@@ -90,8 +90,15 @@ class RequestCoalescer:
             future.set_result(result)
             return result
         except Exception as exc:
-            # Unblock all waiters with the exception so they don't hang
+            # Unblock all waiters with the exception so they don't hang.
             async with self._lock:
                 self._in_flight.pop(key, None)
             future.set_exception(exc)
+            # Mark the exception as retrieved so asyncio does not emit
+            # "Future exception was never retrieved" in its __del__ warning
+            # when there are no concurrent waiters for this key.
+            # Waiters that are present will still receive the exception via
+            # asyncio.shield(future) above; their own await retrieves it.
+            future.exception()
             raise
+

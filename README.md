@@ -2,7 +2,7 @@
 
 > Adaptive middleware designed to reduce redundant API traffic, latency, and backend load.
 
-`✅ Status: Phase 9 Complete — Tests & Benchmarking`
+`✅ Status: prototype-v1.0 — Stabilized, Validated & Release-Ready`
 
 ## Project Overview
 
@@ -66,6 +66,7 @@ The project aims to investigate how middleware-level optimization can reduce thi
 | Phase 7 | Metrics & monitoring             | ✅ Complete  |
 | Phase 8 | Request coalescing               | ✅ Complete  |
 | Phase 9 | Tests & benchmarking             | ✅ Complete  |
+| **Stabilization** | **Prototype Stabilization & Validation** | **✅ Complete — prototype-v1.0** |
 
 ## Current Working Architecture
 
@@ -472,7 +473,7 @@ Configurable via environment variables or `.env`:
 * `UPSTREAM_TIMEOUT_SECONDS`: Request timeout in seconds for proxy client (default: `5.0`).
 * `MOCK_API_DELAY_MS`: Default artificial upstream latency in milliseconds (default: `500`).
 * `MOCK_API_FAILURE_RATE`: Simulated probabilistic failure percentage `0-100` (default: `0`).
-* `CACHE_TTL_SECONDS`: Reserved for future caching phases (default: `30`).
+* `CACHE_TTL_SECONDS`: How long cached entries live before expiring (default: `30` seconds). Implemented in Phase 5/6.
 
 ## Testing
 
@@ -1074,3 +1075,58 @@ The external client should not need to understand the optimizer. The optimizer b
 * Distributed-systems concepts
 * Performance engineering & benchmarking
 * System design & observability
+
+---
+
+## Prototype Stabilization — Validation Summary
+
+> Completed as part of the post-prototype Phase 1 Stabilization effort.
+
+### Validated Features
+
+All of the following were confirmed by the automated test suite (166 tests, 0 failures):
+
+| Feature | Validation Status |
+|---|---|
+| Mock API health, resource, stats, reset, failure endpoints | ✅ PASS |
+| Proxy forwarding, error handling (502/504), no stack-trace leaks | ✅ PASS |
+| Request normalization (method, path, params, headers, body) | ✅ PASS |
+| Cache-key generation (determinism, collision avoidance, SHA-256 format) | ✅ PASS |
+| Cache miss → upstream call → store | ✅ PASS |
+| Cache hit → no upstream call | ✅ PASS |
+| TTL expiration → re-fetch (clock patched in tests) | ✅ PASS |
+| Failed upstream not cached; next request retries | ✅ PASS |
+| Request coalescing: N concurrent identical → 1 upstream call | ✅ PASS |
+| Coalescer cleanup on success and failure | ✅ PASS |
+| Metrics accuracy (hits, misses, ratio, mock_api_calls, avg_latency) | ✅ PASS |
+| CORS headers (allow-origin, expose X-Cache) | ✅ PASS |
+| End-to-end in-process integration test | ✅ PASS |
+
+### Bugs Fixed During Stabilization
+
+| # | Defect | Fix |
+|---|---|---|
+| 1 | `asyncio.get_event_loop()` deprecated in Python 3.10+; raises in 3.12+ | Changed to `asyncio.get_running_loop()` in `coalescer.py` |
+| 2 | "Future exception was never retrieved" spurious stderr noise | Added `future.exception()` after `set_exception()` in coalescer leader path |
+| 3 | `node_modules/` not in `.gitignore` | Added `node_modules/` entry to `.gitignore` |
+
+### Known Limitations
+
+- **No true concurrent HTTP-level coalescing test**: `TestClient` is synchronous; concurrent coalescing is validated only at the async unit level and via `benchmark.py` (requires live services).
+- **`httpx`/Starlette deprecation advisory**: Starlette's `TestClient` recommends `httpx2`. Not upgraded in this phase to avoid dependency churn.
+- **`debug/cache-key` endpoint**: Exposes key-generation details without authentication. Appropriate for a development prototype; must be removed before any production deployment.
+- **No persistence**: Cache and metrics state are in-memory only. Restarting the optimizer resets everything.
+- **Single-process only**: No Redis, no distributed caching, no horizontal scaling.
+
+### Release Identifier
+
+**`prototype-v1.0`** — READY WITH KNOWN LIMITATIONS
+
+The system is a verified, documented baseline suitable for benchmarking experiments.
+
+### Next Phase
+
+**Phase 2 — Benchmarking and Experimental Analysis**
+
+Use `benchmark.py` to run controlled load scenarios, record actual measured numbers, and compare Direct Mock API calls vs. Via Optimizer. Do not implement new features in Phase 2.
+
