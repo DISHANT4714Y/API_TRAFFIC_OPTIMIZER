@@ -1,0 +1,3 @@
+# Raw benchmark results are stored in this directory.
+# Each run produces a JSON file named: run_<RUN_ID>.json
+# Do not edit these files manually.
