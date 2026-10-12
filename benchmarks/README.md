@@ -301,13 +301,84 @@ Key design decisions:
 
 | Step | Task | Dependency | Target Phase |
 |---|---|---|---|
-| S1 | Write `benchmarks/metrics.py`: latency stats, result schema, JSON serializer | None | 2B |
-| S2 | Write `benchmarks/workloads.py`: request generators for W-REP, W-MIX, W-UNQ | S1 | 2B |
-| S3 | Write `benchmarks/run_benchmark.py`: state reset, workload dispatch, result save | S1, S2 | 2B |
-| S4 | Manual smoke test: start both services, run one workload, verify JSON output | S3 | 2B |
-| S5 | Run full experiment matrix (W-REP, W-MIX, W-UNQ, W-WARM, W-CON) × 3 repeats | S4 | 2C |
+| S1 | Write `benchmarks/metrics.py`: latency stats, result schema, JSON serializer | None | 2B (Completed) |
+| S2 | Write `benchmarks/workloads.py`: request generators for W-REP, W-MIX, W-UNQ | S1 | 2B (Completed) |
+| S3 | Write `benchmarks/run_benchmark.py`: state reset, workload dispatch, result save | S1, S2 | 2B (Completed) |
+| S4 | Manual smoke test: start both services, run one workload, verify JSON output | S3 | 2B (Completed) |
+| S5 | Run full experiment matrix (W-REP, W-MIX, W-UNQ, W-WARM, W-CON) x 3 repeats | S4 | 2C |
 | S6 | Run W-COL coalescing experiment (all-concurrent, same resource) | S4 | 2C |
 | S7 | Write `benchmarks/analyze.py`: load JSON, compute tables, generate charts | S5, S6 | 2D |
 | S8 | Write `benchmarks/REPORT.md`: full experimental report | S7 | 2D |
 | S9 | Update root `README.md` with benchmark instructions and findings | S8 | 2D |
 | S10 | Final regression: run `pytest tests/` to confirm no regressions | S3 | 2D |
+
+---
+
+## 8. Benchmark Runner Instructions & Reference (Phase 2B)
+
+### 8.1 Prerequisites & Environment Setup
+
+- Python 3.10+ (tested on Python 3.13)
+- Dependencies installed from `requirements.txt`:
+  ```bash
+  pip install -r requirements.txt
+  ```
+
+### 8.2 Starting Required Services
+
+Before launching the runner, start both the Mock External API and Optimizer services in separate terminal windows:
+
+**Terminal 1 — Mock External API (port 8001):**
+```bash
+uvicorn mock_api.main:app --port 8001
+```
+
+**Terminal 2 — API Traffic Optimizer (port 8000):**
+```bash
+uvicorn app.main:app --port 8000
+```
+
+### 8.3 How to Run Benchmarks
+
+Run a quick test run using the CLI:
+
+```bash
+# Optimized mode (routes through optimizer proxy)
+python benchmarks/run_benchmark.py --mode optimized --workload W-REP --n-requests 50 --concurrency 5
+
+# Baseline mode (direct upstream Mock API)
+python benchmarks/run_benchmark.py --mode baseline --workload W-REP --n-requests 50 --concurrency 5
+```
+
+### 8.4 Available Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `--mode` | string | *(required)* | `baseline` (direct to Mock API) or `optimized` (via proxy) |
+| `--workload` | string | *(required)* | Workload profile: `W-REP`, `W-MIX`, `W-UNQ`, `W-WARM`, `W-CON`, `W-COL` |
+| `--n-requests` | int | `100` | Total measured client requests |
+| `--concurrency` | int | `10` | Maximum simultaneous in-flight requests |
+| `--warm-up` | int | `0` | Number of unmeasured warm-up requests |
+| `--mock-delay-ms` | int | `100` | Upstream simulated latency passed as `?delay_ms=N` |
+| `--pool-size` | int | `10` | Distinct resource IDs in pool for `W-MIX` |
+| `--seed` | int | `42` | Random seed for deterministic resource sampling |
+| `--timeout` | float | `10.0` | Per-request timeout in seconds |
+| `--repetitions` | int | `1` | Number of consecutive repetitions |
+| `--optimizer-url` | string | `http://127.0.0.1:8000` | Base URL of Optimizer |
+| `--mock-api-url` | string | `http://127.0.0.1:8001` | Base URL of Mock API |
+| `--results-dir` | path | `benchmarks/results` | Output directory for saved results |
+
+### 8.5 Output File Descriptions
+
+All runs produce structured output files without overwriting previous results:
+- `benchmarks/results/run_<RUN_ID>.json`: Complete JSON record including client configuration, environment details, summary metrics (mean, P50, P95, P99, error rate, throughput), server metrics snapshot, and all individual request latencies.
+- `benchmarks/results/run_<RUN_ID>.csv`: Dedicated single-run tabular summary.
+- `benchmarks/results/summary.csv`: Cumulative CSV appending key metrics for each run.
+
+### 8.6 Known Limitations
+
+1. **Localhost single-machine bias:** All measurements reflect local loopback network conditions and single-host process scheduling.
+2. **Global mock delay:** The mock API latency is applied synchronously per request via `asyncio.sleep`; differences between resources are not varied dynamically.
+3. **P99 sample size rule:** P99 is recorded as `null` when measured sample count is under 100 requests.
+4. **No mid-run cache eviction:** Cache TTL defaults to 30 seconds; measured phases should conclude within this window unless specifically evaluating TTL expiration.
+

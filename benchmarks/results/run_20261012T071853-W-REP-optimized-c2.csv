@@ -1,0 +1,2 @@
+run_id,timestamp,workload,mode,n_requests,concurrency,warm_up_requests,mock_delay_ms,pool_size,attempted_requests,successful_requests,failed_requests,error_rate_pct,mean_latency_ms,p50_latency_ms,p95_latency_ms,p99_latency_ms,min_latency_ms,max_latency_ms,throughput_rps,benchmark_duration_s,x_cache_hit_count,x_cache_miss_count
+20261012T071853-W-REP-optimized-c2,2026-10-12T07:18:55.409332+00:00,W-REP,optimized,10,2,0,10,10,10,10,0,0.0,838.125,837.656,855.909,,820.583,857.487,11.602,0.862,8,2
