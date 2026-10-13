@@ -1,0 +1,281 @@
+{
+  "run_id": "20261012T073112-W-MIX-optimized-c10",
+  "timestamp": "2026-10-12T07:31:45.823805+00:00",
+  "workload": "W-MIX",
+  "mode": "optimized",
+  "config": {
+    "mode": "optimized",
+    "workload": "W-MIX",
+    "n_requests": 100,
+    "concurrency": 10,
+    "warm_up_requests": 0,
+    "mock_delay_ms": 100,
+    "pool_size": 10,
+    "random_seed": 42,
+    "timeout_s": 10.0,
+    "repetitions": 3,
+    "optimizer_url": "http://127.0.0.1:8000",
+    "mock_api_url": "http://127.0.0.1:8001",
+    "results_dir": "C:\\DESIGN_PROJECT\\API_TRAFFIC_OPTIMIZER\\benchmarks\\results"
+  },
+  "environment": {
+    "python_version": "3.13.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "httpx_version": "0.27.2",
+    "fastapi_version": "0.141.1"
+  },
+  "warm_up": {
+    "requests": 0,
+    "note": "no warm-up requested"
+  },
+  "results": {
+    "attempted_requests": 100,
+    "successful_requests": 73,
+    "failed_requests": 27,
+    "error_rate_pct": 27.0,
+    "mean_latency_ms": 28378.204,
+    "p50_latency_ms": 32059.258,
+    "p95_latency_ms": 32280.23,
+    "p99_latency_ms": 32294.72,
+    "min_latency_ms": 10015.303,
+    "max_latency_ms": 32298.58,
+    "throughput_rps": 3.095,
+    "benchmark_duration_s": 32.307,
+    "x_cache_hit_count": 58,
+    "x_cache_miss_count": 15,
+    "latencies_ms": [
+      10015.303,
+      10046.393,
+      10045.934,
+      10045.581,
+      10045.208,
+      10044.544,
+      10044.161,
+      10043.792,
+      10043.389,
+      10042.91,
+      17713.933,
+      20016.975,
+      20082.073,
+      20082.205,
+      20082.31,
+      20082.415,
+      20082.518,
+      20082.622,
+      20082.737,
+      20082.844,
+      27153.723,
+      27733.46,
+      28684.035,
+      30034.147,
+      30114.46,
+      30114.585,
+      30114.718,
+      30114.818,
+      30114.92,
+      30309.706,
+      30357.871,
+      30370.841,
+      30384.055,
+      31990.574,
+      31991.494,
+      32003.191,
+      32009.86,
+      32012.772,
+      32012.947,
+      32013.218,
+      32019.083,
+      32022.425,
+      32033.018,
+      32036.992,
+      32038.183,
+      32041.176,
+      32047.408,
+      32051.753,
+      32052.082,
+      32056.643,
+      32061.873,
+      32064.708,
+      32067.378,
+      32071.965,
+      32074.069,
+      32079.696,
+      32082.435,
+      32088.478,
+      32097.77,
+      32108.159,
+      32109.198,
+      32110.932,
+      32111.477,
+      32111.813,
+      32122.718,
+      32128.399,
+      32136.067,
+      32141.881,
+      32149.878,
+      32150.255,
+      32154.503,
+      32157.706,
+      32165.055,
+      32169.608,
+      32180.534,
+      32185.763,
+      32191.789,
+      32193.652,
+      32197.505,
+      32201.906,
+      32207.316,
+      32212.224,
+      32220.232,
+      32223.32,
+      32228.019,
+      32231.473,
+      32236.558,
+      32243.628,
+      32247.261,
+      32254.558,
+      32259.442,
+      32261.394,
+      32267.691,
+      32278.756,
+      32279.962,
+      32285.316,
+      32286.556,
+      32294.234,
+      32294.681,
+      32298.58
+    ]
+  },
+  "server_metrics": {
+    "optimizer_metrics": {
+      "total_requests": 100,
+      "cache_hits": 58,
+      "cache_misses": 42,
+      "cache_hit_ratio": 0.58,
+      "mock_api_calls": 42,
+      "requests_saved": 58,
+      "avg_response_time_ms": 2597.73
+    },
+    "cache_stats": {
+      "total_requests": 100,
+      "hits": 58,
+      "misses": 42,
+      "hit_ratio": 0.58,
+      "current_entries": 10
+    },
+    "mock_api_stats": {
+      "total_requests": 10,
+      "uptime_seconds": 206.89
+    }
+  },
+  "errors": [
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 0,
+      "error": "TimeoutError: ReadTimeout('')"
+    },
+    {
+      "status": 504,
+      "error": "HTTP 504"
+    }
+  ]
+}

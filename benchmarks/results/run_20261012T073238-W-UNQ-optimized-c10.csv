@@ -1,0 +1,2 @@
+run_id,timestamp,workload,mode,n_requests,concurrency,warm_up_requests,mock_delay_ms,pool_size,attempted_requests,successful_requests,failed_requests,error_rate_pct,mean_latency_ms,p50_latency_ms,p95_latency_ms,p99_latency_ms,min_latency_ms,max_latency_ms,throughput_rps,benchmark_duration_s,x_cache_hit_count,x_cache_miss_count
+20261012T073238-W-UNQ-optimized-c10,2026-10-12T07:33:57.254789+00:00,W-UNQ,optimized,100,10,0,100,10,100,92,8,8.0,44467.415,43115.599,77936.081,78075.604,7803.939,78076.443,1.281,78.086,0,92

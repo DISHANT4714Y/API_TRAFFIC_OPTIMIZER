@@ -1,0 +1,2 @@
+run_id,timestamp,workload,mode,n_requests,concurrency,warm_up_requests,mock_delay_ms,pool_size,attempted_requests,successful_requests,failed_requests,error_rate_pct,mean_latency_ms,p50_latency_ms,p95_latency_ms,p99_latency_ms,min_latency_ms,max_latency_ms,throughput_rps,benchmark_duration_s,x_cache_hit_count,x_cache_miss_count
+20261012T073220-W-UNQ-baseline-c10,2026-10-12T07:32:22.501026+00:00,W-UNQ,baseline,100,10,0,100,10,100,100,0,0.0,699.49,691.318,1256.374,1261.852,128.722,1262.199,78.736,1.27,,

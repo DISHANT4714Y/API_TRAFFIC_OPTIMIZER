@@ -1,0 +1,2 @@
+run_id,timestamp,workload,mode,n_requests,concurrency,warm_up_requests,mock_delay_ms,pool_size,attempted_requests,successful_requests,failed_requests,error_rate_pct,mean_latency_ms,p50_latency_ms,p95_latency_ms,p99_latency_ms,min_latency_ms,max_latency_ms,throughput_rps,benchmark_duration_s,x_cache_hit_count,x_cache_miss_count
+20261012T072921-W-REP-baseline-c10,2026-10-12T07:29:24.076674+00:00,W-REP,baseline,100,10,0,100,10,100,100,0,0.0,722.324,713.098,1317.2,1319.082,140.096,1319.836,75.522,1.324,,
