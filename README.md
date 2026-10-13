@@ -2,7 +2,7 @@
 
 > Adaptive middleware designed to reduce redundant API traffic, latency, and backend load.
 
-`✅ Status: prototype-v1.0 — Stabilized, Validated & Release-Ready`
+`✅ Status: prototype-v2.0 — Phase 2C Complete / Phase 2D In Progress (v1.0 Baseline Validated)`
 
 ## Project Overview
 
@@ -52,6 +52,8 @@ The project aims to investigate how middleware-level optimization can reduce thi
 
 ## Current Development Status
 
+### Version 1 Prototype (`prototype-v1.0`) — Complete & Validated
+
 | Phase   | Component                        | Status      |
 | ------- | -------------------------------- | ----------- |
 | Phase 1 | Project setup & foundation       | ✅ Complete  |
@@ -65,8 +67,17 @@ The project aims to investigate how middleware-level optimization can reduce thi
 | Phase 6 | TTL cache management             | ✅ Complete  |
 | Phase 7 | Metrics & monitoring             | ✅ Complete  |
 | Phase 8 | Request coalescing               | ✅ Complete  |
-| Phase 9 | Tests & benchmarking             | ✅ Complete  |
+| Phase 9 | Tests & initial benchmarking     | ✅ Complete  |
 | **Stabilization** | **Prototype Stabilization & Validation** | **✅ Complete — prototype-v1.0** |
+
+### Version 2 Prototype — Performance Benchmarking & Experimental Analysis
+
+| Phase | Component | Status |
+|---|---|---|
+| **Phase 2A** | **Benchmarking Framework & Protocol Design** | **✅ Complete** (`benchmarks/README.md`) |
+| **Phase 2B** | **Reproducible Runner, Workloads & Metrics Engine** | **✅ Complete** (`run_benchmark.py`, 82 tests) |
+| **Phase 2C** | **Controlled Performance Experiments Execution** | **✅ Complete** (`run_phase2c.py`, `summary.csv`) |
+| **Phase 2D** | **Automated Analysis, Visualizations & Reporting** | **🔄 In Progress** (`analyze.py`, `REPORT.md`) |
 
 ## Current Working Architecture
 
@@ -312,6 +323,28 @@ intelligent-api-optimizer/
 │   ├── models.py
 │   └── state.py
 │
+├── benchmarks/                    ← ✅ Phase 2: Scientific Benchmarking Framework
+│   ├── README.md                  ← Phase 2A: specification & metric definitions (M01–M17)
+│   ├── metrics.py                 ← Phase 2B: latency stats, P50/P95/P99, schemas
+│   ├── workloads.py               ← Phase 2B: workload request generators (W-REP, W-MIX, W-UNQ, etc.)
+│   ├── run_benchmark.py           ← Phase 2B: reproducible CLI benchmark runner
+│   ├── run_phase2c.py             ← Phase 2C: master experiment runner
+│   ├── experiment_log.md          ← Phase 2C: controlled execution log & architectural findings
+│   ├── results/                   ← Phase 2C: individual run JSON/CSV records + summary.csv
+│   └── charts/                    ← Phase 2D: benchmark visualization outputs
+│
+├── frontend/                      ← ✅ Developer Observability Dashboard (React / Vite)
+│   ├── src/
+│   │   ├── components/            ← MetricCard, RequestFlow, Simulator, CacheStatus, etc.
+│   │   ├── pages/                 ← Dashboard.jsx
+│   │   ├── services/api.js        ← backend client connector
+│   │   ├── styles/index.css       ← dark-mode design system
+│   │   └── App.jsx
+│   ├── index.html
+│   ├── package.json
+│   ├── vite.config.js
+│   └── README.md
+│
 ├── tests/
 │   ├── __init__.py
 │   ├── test_mock_api.py           ← Phase 2 tests
@@ -321,9 +354,10 @@ intelligent-api-optimizer/
 │   ├── test_cache.py              ← Phase 5/6: cache + TTL expiry integration tests
 │   ├── test_metrics.py            ← ✅ Phase 7: MetricsCollector unit + integration tests
 │   ├── test_coalescer.py          ← ✅ Phase 8: RequestCoalescer async unit + integration
+│   ├── test_benchmark_metrics.py  ← ✅ Phase 2B: benchmark metrics & workloads tests (82 tests)
 │   └── test_optimizer.py          ← import smoke test
 │
-├── benchmark.py                   ← ✅ Phase 9: benchmark script
+├── benchmark.py                   ← legacy Phase 9 smoke script (superseded by benchmarks/)
 ├── pytest.ini                     ← asyncio_mode = auto
 ├── requirements.txt
 ├── .env.example
@@ -354,9 +388,17 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### Frontend Dashboard Setup
+
+```powershell
+cd frontend
+npm install
+cd ..
+```
+
 ## Running the Services
 
-To run the complete system, start both services in separate terminal windows:
+To run the complete system, start the services in separate terminal windows:
 
 ### Terminal 1 — Mock External API (Port 8001)
 
@@ -370,6 +412,13 @@ uvicorn mock_api.main:app --port 8001 --reload
 ```powershell
 .\.venv\Scripts\Activate.ps1
 uvicorn app.main:app --port 8000 --reload
+```
+
+### Terminal 3 — Developer Observability Dashboard (Port 5173)
+
+```powershell
+cd frontend
+npm run dev
 ```
 
 ## Implemented Endpoints
@@ -483,7 +532,7 @@ Configurable via environment variables or `.env`:
 .venv\Scripts\python.exe -m pytest tests/ -v
 ```
 
-Current result: **166 tests, 0 failures.**
+Current result: **248 tests** (166 core optimizer tests + 82 Phase 2B benchmark & workload tests).
 
 ### Run tests by phase
 
@@ -505,34 +554,83 @@ python -m pytest tests/test_metrics.py -v
 
 # Phase 8 — Request Coalescer
 python -m pytest tests/test_coalescer.py -v
+
+# Phase 2B — Benchmark metrics & workloads
+python -m pytest tests/test_benchmark_metrics.py -v
 ```
 
 ## Benchmarking
 
-The `benchmark.py` script compares two scenarios over 50 requests with concurrency of 10:
-- **Scenario A**: Direct calls to the Mock API
-- **Scenario B**: Calls through the Optimizer proxy (cache populated after 1st request)
+The project contains two benchmarking mechanisms:
+1. **Version 2 Scientific Benchmarking Framework** (`benchmarks/`) — High-precision, reproducible experimental runner with multiple workload profiles, percentiles (P50/P95/P99), error tracking, and persistent JSON/CSV logs.
+2. **Phase 9 Smoke Benchmark** (`benchmark.py`) — Lightweight 50-request script for rapid local validation.
 
-### Prerequisites
+---
 
-Both services must be running (see _Running the Services_ above).
+### 1. Version 2 Scientific Benchmarking Framework (`benchmarks/`)
 
-### Run the benchmark
+Designed in **Phase 2A**, implemented in **Phase 2B**, and executed across controlled matrices in **Phase 2C**, this framework supersedes single-scenario tests by measuring the optimizer under realistic, reproducible traffic patterns.
+
+#### Available Workload Profiles
+
+| Workload ID | Name | Description | Concurrency | Primary Target |
+|---|---|---|---|---|
+| `W-REP` | Repeated Identical | All requests target the exact same resource | 10 | Cache Hit efficiency & latency reduction |
+| `W-MIX` | Mixed Repeated | Requests cycle across a pool of $K=10$ resources | 10 | Realistic multi-endpoint cache behavior |
+| `W-UNQ` | Mostly Unique | Each request requests a unique resource ID | 10 | Cache miss overhead & lock stress |
+| `W-WARM` | Warm Cache | Workload executed after pre-populating cache | 10 | Pure cache lookup performance |
+| `W-COL` | Concurrent Coalescing | All requests launched simultaneously | 50 | In-flight request deduplication |
+| `W-CON` | Concurrency Sweep | `W-REP` across varying concurrency levels | 1, 5, 10, 20, 50 | Scalability & queueing behavior |
+
+#### Prerequisites
+
+Both services must be running:
+- Mock External API on `http://127.0.0.1:8001`
+- Optimizer Proxy on `http://127.0.0.1:8000`
+
+#### Running Individual Benchmarks (`benchmarks/run_benchmark.py`)
+
+```powershell
+# Optimized path (through optimizer proxy)
+python benchmarks/run_benchmark.py --mode optimized --workload W-REP --n-requests 100 --concurrency 10
+
+# Baseline path (direct Mock API calls)
+python benchmarks/run_benchmark.py --mode baseline --workload W-REP --n-requests 100 --concurrency 10
+```
+
+#### Running Full Controlled Experiment Matrices (`benchmarks/run_phase2c.py`)
+
+To run the automated suite executing 3 repetitions each of `W-REP`, `W-MIX`, and `W-UNQ` across both baseline and optimized paths:
+
+```powershell
+python benchmarks/run_phase2c.py
+```
+
+#### Output Artifacts & Persistence
+
+Every execution automatically resets server state (`/stats/reset`, `/cache/reset`, `/metrics/reset`) and writes structured outputs to `benchmarks/results/`:
+- `run_<TIMESTAMP>-<WORKLOAD>-<MODE>-c<CONCURRENCY>.json`: Full latency distribution, individual sample timings, server metrics snapshots, and environment details.
+- `run_<TIMESTAMP>-<WORKLOAD>-<MODE>-c<CONCURRENCY>.csv`: Per-run tabular metrics.
+- `summary.csv`: Cumulative log appending all benchmark executions.
+- `benchmarks/experiment_log.md`: Detailed audit log of execution runs and observations.
+
+#### Key Phase 2C Empirical Findings
+
+1. **Upstream Call Reduction**: Under `W-REP`, the optimizer achieved a **90% cache hit ratio**, reducing upstream calls by 90% and protecting backend infrastructure.
+2. **Coalescer Lock Serialization Discovery**: Testing with `W-UNQ` under high concurrency uncovered that `RequestCoalescer`'s global `asyncio.Lock` serializes leader registrations during cache misses even when keys are independent. Documented in [experiment_log.md](file:///c:/Documents/API_Traffic_Optimizer/benchmarks/experiment_log.md) as a key architectural insight driving planned v2.1 per-key lock striping.
+
+---
+
+### 2. Legacy Phase 9 Smoke Script (`benchmark.py`)
+
+A quick, 50-request CLI comparison over concurrency 10:
 
 ```powershell
 .venv\Scripts\python.exe benchmark.py
 ```
 
-### Sample benchmark output
-
+Sample output:
 ```text
-Benchmark config: 50 requests, concurrency=10
-Resource: benchmark-resource
-
-Resetting Optimizer cache and metrics ...
-[A] Sending 50 requests directly to Mock API ...
-[B] Sending 50 requests through Optimizer ...
-
 ==============================================================
   API Traffic Optimizer -- Phase 9 Benchmark Results
 ==============================================================
@@ -548,8 +646,6 @@ Resetting Optimizer cache and metrics ...
   Optimizer avg latency speedup:  2.27x
 ==============================================================
 ```
-
-> **Key findings**: The Optimizer serves 49 of 50 requests from cache, reducing upstream Mock API calls from 50 to 1 and cutting average latency by ~2.3x.
 
 ### What the test suite validates
 
@@ -592,16 +688,36 @@ Resetting Optimizer cache and metrics ...
 * Authorization never included in key
 * Key format: `api-cache:v1:<64-char SHA-256 hex>`
 * Key contains no raw path or param values
-**Phase 5 — Basic In-Memory Cache** (`test_cache.py`)
+
+**Phase 5 & 6 — Cache & TTL Management** (`test_cache.py`)
 * `CacheEntry` dataclass instantiation and expiration (`is_expired()`) logic with mocked time
-* `CacheManager` unit tests: get/set/delete/exists/clear flow
+* `CacheManager` unit tests: get/set/delete/exists/clear/reset flow
 * `CacheManager` TTL correctness: entry naturally expires and is deleted on access
 * `CacheManager` statistics calculations (total requests, hits, misses, hit ratio)
 * Zero-division avoidance logic for hit ratio
 * Proxy integration: First request results in `X-Cache: MISS` + upstream call
 * Proxy integration: Second request results in `X-Cache: HIT` + no upstream call
 * Proxy integration: Upstream 5xx errors are verified to bypass caching
-* Observability endpoints: `/cache/stats` and `/cache/clear` correctness
+* Observability endpoints: `/cache/stats`, `/cache/clear`, and `/cache/reset` correctness
+
+**Phase 7 — Performance Metrics** (`test_metrics.py`)
+* `MetricsCollector` counter increments for total requests, hits, misses, mock API calls, saved requests
+* Dynamic calculation of hit ratio and running mean latency
+* `GET /metrics` and `POST /metrics/reset` endpoint behavior
+
+**Phase 8 — Request Coalescing** (`test_coalescer.py`)
+* Concurrent identical requests collapsed into a single upstream invocation
+* Follower propagation of leader response data and status codes
+* Upstream exception propagation to all in-flight waiters
+* Clean teardown of in-flight future table on completion or failure
+
+**Phase 2B — Benchmark Metrics & Workloads** (`test_benchmark_metrics.py`)
+* Arithmetic mean, min, max, and duration computations
+* P50, P95, and P99 percentile interpolation accuracy
+* P99 sample threshold constraint ($N \ge 100$)
+* Derived metrics: error rate %, throughput RPS, upstream reduction %
+* Deterministic workload generation with fixed random seed ($42$)
+* Serialization and schema compliance for JSON and CSV exports
 
 ## Development Roadmap
 
@@ -981,41 +1097,65 @@ logger.info("[OPTIMIZER] Cache key (Phase 4): %s", cache_key)
 | **Total Phase 4** | **80** | — |
 | **Full suite** | **108** | Zero failures |
 
-### Phase 5 — In-Memory Cache
-Implement:
-* cache entry structure (dataclass with TTL timestamps)
-* in-memory dict-based cache storage
-* cache lookup using the Phase 4 key
-* cache hit → return stored response
-* cache miss → call upstream → store → return
-* `/cache/stats` and `/cache/clear` endpoints
+### Phase 5 — In-Memory Cache ✅
+* In-memory cache storage using `CacheManager` and `CacheEntry` dataclass
+* Cache lookup using deterministic SHA-256 cache key before upstream dispatch
+* Cache hit: immediate return with `X-Cache: HIT` header without upstream call
+* Cache miss: upstream dispatch, storage of 2xx responses with `X-Cache: MISS` header
+* Error responses (4xx, 5xx) strictly bypass caching
+* Observability endpoints: `GET /cache/stats`, `POST /cache/clear`, and `POST /cache/reset`
 
-### Phase 6 — TTL & Cache Expiry
-Implement:
-* fixed TTL using `time.monotonic()` for safe elapsed-time measurement
-* lazy expiry on lookup
-* configurable `CACHE_TTL_SECONDS`
+### Phase 6 — TTL & Cache Expiry ✅
+* Monotonic clock timestamping (`time.monotonic()`) preventing system clock drift issues
+* Per-entry TTL validation (`entry.is_expired()`) with lazy eviction on lookup
+* Configurable expiration window via `CACHE_TTL_SECONDS` (default: 30s)
 
-### Phase 7 — Request Deduplication
-Prevent unnecessary duplicate processing.
+### Phase 7 — Metrics & Monitoring ✅
+* Server-side `MetricsCollector` tracking real-time traffic statistics
+* Aggregate counts: `total_requests`, `cache_hits`, `cache_misses`, `mock_api_calls`, `requests_saved`
+* Running mean latency (`avg_response_time_ms`) and cache hit ratio calculations
+* Endpoints: `GET /metrics` snapshot and `POST /metrics/reset`
 
-### Phase 8 — Request Coalescing
-Multiple simultaneous requests for the same resource share one in-flight external request.
+### Phase 8 — Request Coalescing ✅
+* `RequestCoalescer` using `asyncio.Future` dictionary table
+* Deduplicates simultaneous identical requests targeting the same cache key
+* Leader-follower pattern: first request fetches from upstream, subsequent concurrent requests wait and receive the leader's response
+* Robust cleanup on success, timeout, or upstream exceptions
 
-### Phase 9 — Metrics & Benchmarking
-Compare:
-```text
-Baseline
-vs.
-Optimized
-```
-Metrics will include:
-* External API calls
-* Cache hit ratio
-* API call reduction
-* Average latency
-* P95 latency
-* Throughput
+### Phase 9 — Tests & Baseline Benchmarking ✅
+* End-to-end test suite and initial smoke benchmark (`benchmark.py`)
+* React / Vite developer observability dashboard (`frontend/` on Port 5173)
+* Demonstrated 2.3x latency improvement on repeated sequential requests
+
+---
+
+## Version 2 Prototype — Performance Benchmarking & Experimental Analysis
+
+Building upon the validated v1.0 baseline, Version 2 focuses on scientific, reproducible performance evaluation across multi-workload stress testing.
+
+### Phase 2A — Framework & Protocol Design ✅
+* Defined 17 formal benchmark metrics (**M01–M17**) including P50, P95, P99, error rates, and throughput
+* Standardized state-reset protocol (`/stats/reset` → `/cache/reset` → `/metrics/reset`)
+* Designed 6 workload profiles (`W-REP`, `W-MIX`, `W-UNQ`, `W-WARM`, `W-COL`, `W-CON`)
+* Full specification recorded in [benchmarks/README.md](file:///c:/Documents/API_Traffic_Optimizer/benchmarks/README.md)
+
+### Phase 2B — Benchmark Runner Implementation & Metrics Engine ✅
+* Async multi-concurrency benchmark runner CLI ([benchmarks/run_benchmark.py](file:///c:/Documents/API_Traffic_Optimizer/benchmarks/run_benchmark.py))
+* Mathematical metrics engine ([benchmarks/metrics.py](file:///c:/Documents/API_Traffic_Optimizer/benchmarks/metrics.py))
+* Deterministic workload generators with fixed seed ([benchmarks/workloads.py](file:///c:/Documents/API_Traffic_Optimizer/benchmarks/workloads.py))
+* Comprehensive test suite ([tests/test_benchmark_metrics.py](file:///c:/Documents/API_Traffic_Optimizer/tests/test_benchmark_metrics.py)) adding 82 tests
+
+### Phase 2C — Controlled Performance Experiments Execution ✅
+* Master automated experiment runner ([benchmarks/run_phase2c.py](file:///c:/Documents/API_Traffic_Optimizer/benchmarks/run_phase2c.py))
+* Matrix execution across `W-REP`, `W-MIX`, and `W-UNQ` with 3 repetitions per scenario
+* Structured JSON/CSV run records stored in `benchmarks/results/` and appended to `summary.csv`
+* Documented findings in [benchmarks/experiment_log.md](file:///c:/Documents/API_Traffic_Optimizer/benchmarks/experiment_log.md)
+* Identified key architectural insight regarding coalescer lock serialization under high-concurrency unique cache misses
+
+### Phase 2D — Performance Analysis, Visualizations & Reporting 🔄
+* Automated results analysis script (`benchmarks/analyze.py`)
+* Comparative latency distribution and throughput visualizations (`benchmarks/charts/`)
+* Comprehensive experimental report (`benchmarks/REPORT.md`)
 
 ## Benchmarking Philosophy
 
@@ -1118,15 +1258,20 @@ All of the following were confirmed by the automated test suite (166 tests, 0 fa
 - **No persistence**: Cache and metrics state are in-memory only. Restarting the optimizer resets everything.
 - **Single-process only**: No Redis, no distributed caching, no horizontal scaling.
 
-### Release Identifier
+### Release Identifiers & Milestone Progression
 
-**`prototype-v1.0`** — READY WITH KNOWN LIMITATIONS
+* **`prototype-v1.0`** — Stabilized & validated baseline release (Phase 1–9 complete, 166 core tests passing).
+* **`prototype-v2.0`** — Active performance benchmarking & experimental evaluation release:
+  * **Phase 2A**: Framework & protocol design complete ([benchmarks/README.md](file:///c:/Documents/API_Traffic_Optimizer/benchmarks/README.md))
+  * **Phase 2B**: Runner CLI & metrics engine implemented, 82 tests added ([tests/test_benchmark_metrics.py](file:///c:/Documents/API_Traffic_Optimizer/tests/test_benchmark_metrics.py))
+  * **Phase 2C**: Controlled experiments executed across `W-REP`, `W-MIX`, `W-UNQ` ([benchmarks/experiment_log.md](file:///c:/Documents/API_Traffic_Optimizer/benchmarks/experiment_log.md), [benchmarks/results/summary.csv](file:///c:/Documents/API_Traffic_Optimizer/benchmarks/results/summary.csv))
+  * **Phase 2D**: Analysis, visualizations, and comprehensive experimental report (in progress)
 
-The system is a verified, documented baseline suitable for benchmarking experiments.
+### Immediate Next Milestone
 
-### Next Phase
+**Phase 2D — Automated Analysis, Visualizations & Reporting**
 
-**Phase 2 — Benchmarking and Experimental Analysis**
-
-Use `benchmark.py` to run controlled load scenarios, record actual measured numbers, and compare Direct Mock API calls vs. Via Optimizer. Do not implement new features in Phase 2.
+- Implement automated analysis script (`benchmarks/analyze.py`) to parse and tabulate `benchmarks/results/*.json`.
+- Generate comparative latency distribution and throughput charts (`benchmarks/charts/`).
+- Publish consolidated experimental report (`benchmarks/REPORT.md`) detailing caching speedups, upstream load reduction, and coalescer concurrency characteristics.
 
