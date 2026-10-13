@@ -96,3 +96,13 @@ of the current coalescer, not a measurement error. Results are reported as-is.
 [2026-10-13T06:37:25Z] CMD: --mode baseline --workload W-MIX --n-requests 100 --concurrency 10 --warm-up 0 --mock-delay-ms 100 --pool-size 10 --seed 42 --timeout 10.0 --repetitions 3 --results-dir C:\DESIGN_PROJECT\API_TRAFFIC_OPTIMIZER\benchmarks\results --optimizer-url http://127.0.0.1:8000 --mock-api-url http://127.0.0.1:8001
 [2026-10-13T06:37:34Z] ExpB-baseline: OK in 8.6s
 [2026-10-13T06:37:34Z] CMD: --mode optimized --workload W-MIX --n-requests 100 --concurrency 10 --warm-up 0 --mock-delay-ms 100 --pool-size 10 --seed 42 --timeout 15.0 --repetitions 3 --results-dir C:\DESIGN_PROJECT\API_TRAFFIC_OPTIMIZER\benchmarks\results --optimizer-url http://127.0.0.1:8000 --mock-api-url http://127.0.0.1:8001
+[2026-10-13T06:39:03Z] ExpB-optimized: OK in 89.4s
+[2026-10-13T06:39:03Z] 
+--- Experiment C: Mostly unique (W-UNQ) ---
+[2026-10-13T06:39:03Z] Control: 100 requests, each unique resource, concurrency=10, delay_ms=100
+[2026-10-13T06:39:03Z] NOTE: Prior runs showed severe coalescer-lock serialization for unique keys.
+[2026-10-13T06:39:03Z] Using timeout=15s for optimized. Results may show high error rates.
+[2026-10-13T06:39:03Z] This is the 'optimizer adds overhead' scenario; results reported as-is.
+[2026-10-13T06:39:03Z] CMD: --mode baseline --workload W-UNQ --n-requests 100 --concurrency 10 --warm-up 0 --mock-delay-ms 100 --pool-size 10 --seed 42 --timeout 10.0 --repetitions 3 --results-dir C:\DESIGN_PROJECT\API_TRAFFIC_OPTIMIZER\benchmarks\results --optimizer-url http://127.0.0.1:8000 --mock-api-url http://127.0.0.1:8001
+[2026-10-13T06:39:14Z] ExpC-baseline: OK in 10.8s
+[2026-10-13T06:39:14Z] CMD: --mode optimized --workload W-UNQ --n-requests 100 --concurrency 10 --warm-up 0 --mock-delay-ms 100 --pool-size 10 --seed 42 --timeout 15.0 --repetitions 3 --results-dir C:\DESIGN_PROJECT\API_TRAFFIC_OPTIMIZER\benchmarks\results --optimizer-url http://127.0.0.1:8000 --mock-api-url http://127.0.0.1:8001

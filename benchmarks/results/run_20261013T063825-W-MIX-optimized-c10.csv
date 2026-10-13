@@ -1,0 +1,2 @@
+run_id,timestamp,workload,mode,n_requests,concurrency,warm_up_requests,mock_delay_ms,pool_size,attempted_requests,successful_requests,failed_requests,error_rate_pct,mean_latency_ms,p50_latency_ms,p95_latency_ms,p99_latency_ms,min_latency_ms,max_latency_ms,throughput_rps,benchmark_duration_s,x_cache_hit_count,x_cache_miss_count
+20261013T063825-W-MIX-optimized-c10,2026-10-13T06:38:43.959845+00:00,W-MIX,optimized,100,10,0,100,10,100,99,1,1.0,16848.795,17593.609,17955.2,17963.661,11302.793,17966.045,5.565,17.97,73,26
